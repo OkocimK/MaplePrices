@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maple ceny</title>
+<style>
+  :root {
+    --paper: #f6efe2; --ink: #2b2418; --muted: #7a6c55; --line: #d9ccb4; --panel: #fffaf0;
+    --accent: #e0862a; --accent2: #b85c14; --sold: #8a8a8a; --good: #3e7d3a; --bad: #a33a2a;
+    --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--line); position: sticky; top: 0; }
+  h1 { font-size: 18px; margin: 0; }
+  .tog { font: inherit; font-weight: 700; padding: 6px 16px; border-radius: 6px; border: 2px solid var(--accent2); background: var(--accent); color: #fff; cursor: pointer; }
+  .tog.off { background: #ddd; color: #444; border-color: #999; }
+  .stat { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  th.n { text-align: right; }
+  tr.item { cursor: pointer; }
+  tr.item:hover { background: #f3e8d3; }
+  tr.item.sel { background: #f6dcb8; }
+  tr.other td:first-child { color: var(--muted); }
+  .q { color: var(--bad); }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .obs { display: grid; grid-template-columns: 1fr; gap: 6px; max-height: 80vh; overflow: auto; }
+  .ob { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: #fff; }
+  .ob img { grid-column: 1 / -1; width: 100%; image-rendering: pixelated; border: 1px solid var(--line); }
+  .ob .p { font-family: var(--mono); font-weight: 700; }
+  .ob .p.sold { color: var(--sold); text-decoration: line-through; }
+  .ob .p.old { color: var(--muted); }
+  .ob .m { color: var(--muted); font-size: 12px; }
+  .ob button { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--bad); color: var(--bad); background: #fff; cursor: pointer; }
+  .log { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 160px; overflow: auto; margin-top: 8px; }
+  .filter { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; width: 260px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Maple ceny</h1>
+  <button id="tog" class="tog off">wyłączone</button>
+  <span id="stat" class="stat"></span>
+  <input id="filter" class="filter" placeholder="filtr nazwy, np. overall dex" type="search">
+  <label class="stat"><input id="onlyNow" type="checkbox" checked> tylko z aktualnymi ofertami</label>
+</header>
+<main>
+  <section class="panel">
+    <table>
+      <thead><tr>
+        <th>przedmiot</th><th class="n">n</th>
+        <th class="n">aktualne</th><th class="n">ask min teraz</th><th class="n">ask med 7d</th>
+        <th class="n">sold med 7d</th><th class="n">sold max 7d</th>
+        <th class="n">kup do</th><th class="n">sprzedaj za</th><th>ostatnio</th>
+      </tr></thead>
+      <tbody id="items"></tbody>
+    </table>
+    <p class="hint">Ask to ceny wystawione (aktywne), sold to wiersze wykupione, czyli ceny, za które ktoś kupił; schodzą najtańsze, więc to dolna granica.
+      „Aktualne" to oferty, których sklep jeszcze stoi (licznik z paska sklepu) i których nie widziano później jako wykupione; przedawnione zostają w historii.
+      „Kup do" = dolny kwartyl asków z 7 dni, „sprzedaj za" = między medianą sold a najniższym aktualnym askiem. Heurystyka, nie prawda objawiona.
+      Nazwy z „?" mają obcięty stat albo procent. Kliknij wiersz, żeby zobaczyć obserwacje i wycinki.</p>
+    <div id="log" class="log"></div>
+  </section>
+  <aside class="panel">
+    <h2 id="selname" style="font-size:15px;margin:0 0 8px">wybierz przedmiot</h2>
+    <div id="obs" class="obs"></div>
+  </aside>
+</main>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const fmt = v => v == null ? '' : v.toLocaleString('pl-PL');
+  let items = [], sel = null;
+  // Tryb statyczny: strona opublikowana przez publish.py nie ma tracker.py za sobą,
+  // czyta data.json (zestawienie policzone w chwili publikacji) i nic nie zmienia.
+  let STATIC = null;
+
+  function hints(it) {
+    const buy = it.ask_q1_7d ?? it.ask_min_now;
+    let sell = null;
+    if (it.ask_min_now != null && it.sold_med_7d != null) sell = Math.round((it.ask_min_now + it.sold_med_7d) / 2);
+    else if (it.ask_min_now != null) sell = Math.round(it.ask_min_now * 0.95);
+    else if (it.sold_med_7d != null) sell = it.sold_med_7d;
+    return [buy, sell];
+  }
+  function renderItems() {
+    const f = $('#filter').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const onlyNow = $('#onlyNow').checked;
+    const tb = $('#items'); tb.innerHTML = '';
+    for (const it of items) {
+      const nm = it.name.toLowerCase();
+      if (f.length && !f.every(w => nm.includes(w))) continue;
+      if (onlyNow && !it.n_now && it.name !== sel) continue;
+      const [buy, sell] = hints(it);
+      const tr = document.createElement('tr');
+      tr.className = 'item' + (it.scroll ? '' : ' other') + (it.name === sel ? ' sel' : '');
+      const nameHtml = it.name.includes('?') ? `<span class="q">${it.name}</span>` : it.name;
+      tr.innerHTML = `<td>${nameHtml}</td><td class="n">${it.n}${it.n_sold ? ` <span class="stat">(${it.n_sold} sold)</span>` : ''}</td>
+        <td class="n">${it.n_now || ''}</td><td class="n">${fmt(it.ask_min_now)}</td><td class="n">${fmt(it.ask_med_7d)}</td>
+        <td class="n">${fmt(it.sold_med_7d)}</td><td class="n">${fmt(it.sold_max_7d)}</td>
+        <td class="n">${fmt(buy)}</td><td class="n">${fmt(sell)}</td><td>${it.last.replace('T', ' ').slice(5, 16)}</td>`;
+      tr.onclick = () => { sel = it.name; renderItems(); loadObs(); };
+      tb.appendChild(tr);
+    }
+  }
+  async function loadItems() {
+    if (STATIC) { items = STATIC.items; renderItems(); return; }
+    items = await (await fetch('/api/items')).json();
+    renderItems();
+  }
+  async function loadObs() {
+    if (!sel) return;
+    $('#selname').textContent = sel;
+    const rows = STATIC ? (STATIC.obs[sel] || []) : await (await fetch('/api/obs?name=' + encodeURIComponent(sel))).json();
+    const box = $('#obs'); box.innerHTML = '';
+    for (const o of rows) {
+      const d = document.createElement('div'); d.className = 'ob';
+      const exp = o.sold ? '' : (o.expired ? ' · wygasło' : ' · do ' + o.expires.replace('T', ' ').slice(5, 16));
+      d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.expired ? ' old' : '')}">${fmt(o.price)}${o.sold ? ' (wykupione)' : ''}</span>
+        ${STATIC ? '<span></span>' : '<button title="usuń błędną obserwację">usuń</button>'}
+        <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp} · ${o.owner ?? '?'} · ${o.map ?? ''}${o.channel ? '<' + o.channel + '>' : ''}${o.complete ? '' : ' · niepełne'} · OCR: „${o.raw_name}"</span>
+        <img src="crops/${o.id}.png" alt="" loading="lazy">`;
+      const btn = d.querySelector('button');
+      if (btn) btn.onclick = async () => {
+        if (!confirm('Usunąć tę obserwację?')) return;
+        await fetch('/api/delete?id=' + o.id, { method: 'POST' });
+        await loadItems(); await loadObs();
+      };
+      box.appendChild(d);
+    }
+  }
+  async function loadStatic() {
+    const r = await fetch('data.json', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('brak data.json');
+    STATIC = await r.json();
+    $('#tog').hidden = true;
+    $('#log').hidden = true;
+    $('#stat').textContent = `stan z ${STATIC.generated.replace('T', ' ').slice(0, 16)} · ${STATIC.items.length} przedmiotów`;
+    await loadItems();
+  }
+  async function poll() {
+    if (STATIC) return;
+    try {
+      const r = await fetch('/api/state');
+      if (!r.ok) throw new Error('brak api');
+      const s = await r.json();
+      const b = $('#tog');
+      b.textContent = s.on ? 'WŁĄCZONE (F9)' : 'wyłączone (F9)';
+      b.className = 'tog' + (s.on ? '' : ' off');
+      $('#stat').textContent = `klatki ${s.frames} · sklepy ${s.shops} · nowe oferty ${s.added}` + (s.stale ? ` · nieświeże ikony ${s.stale}` : '');
+      $('#log').textContent = s.log.slice(0, 12).join('\n');
+      if (s.added !== poll.added) { poll.added = s.added; await loadItems(); if (sel) await loadObs(); }
+    } catch (e) {
+      try { await loadStatic(); } catch (e2) { $('#stat').textContent = 'brak połączenia z tracker.py'; }
+    }
+  }
+  $('#tog').onclick = async () => { await fetch('/api/toggle', { method: 'POST' }); await poll(); };
+  $('#filter').oninput = renderItems;
+  $('#onlyNow').onchange = renderItems;
+  poll().then(() => { if (!STATIC) loadItems(); });
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>
