@@ -1,0 +1,27 @@
+# Odbiornik obserwacji dla https://osmsfm.duckdns.org/ (pricetrack/server/ingest.py).
+# Instaluje go pricetrack/publish.py do /etc/systemd/system/. Jeden proces Pythona
+# z biblioteki standardowej, ok. 20 MB RSS, nasluchuje tylko na 127.0.0.1:8781;
+# z zewnatrz wchodzi sie przez nginx (location /api/ w deploy/osmsfm.nginx.conf).
+
+[Unit]
+Description=osmsfm price ingest (pricetrack)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Environment=OSMSFM_TOKEN_FILE=/etc/osmsfm/token
+Environment=OSMSFM_DB=/var/lib/osmsfm/prices.sqlite
+Environment=OSMSFM_WEB=/var/www/osmsfm
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/osmsfm/ingest.py
+Restart=on-failure
+RestartSec=5
+MemoryMax=150M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/osmsfm /var/www/osmsfm
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

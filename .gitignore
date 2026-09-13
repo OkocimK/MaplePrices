@@ -2,3 +2,4 @@
 samples/
 __pycache__/
 data/
+dist/

@@ -1,119 +1,79 @@
-"""publish.py: eksport bazy do strony statycznej i wgranie jej na hosta (osmsfm.duckdns.org).
+"""publish.py: wgranie serwerowej części pricetracka na hosta rimhaven (administrator, ssh).
 
-Strona publiczna nie ma Pythona ani bazy: to `index.html` (viewer w trybie statycznym),
-`data.json` (zestawienie i obserwacje, liczone tu, w chwili publikacji) oraz `crops/`
-(wycinki wierszy). Na serwerze chodzi tylko nginx, tak jak przy kalkulatorze.
+Dane NIE jadą tędy: obserwacje wysyła każdy tracker sam przez HTTPS do odbiornika
+(`server/ingest.py`, patrz `sync.py`). Ten skrypt wgrywa tylko kod i konfigurację:
 
-    .venv\\Scripts\\python publish.py            # zbuduj data/public/ i wgraj na hosta
-    .venv\\Scripts\\python publish.py --build    # tylko zbuduj, do obejrzenia lokalnie
-    .venv\\Scripts\\python publish.py --nginx    # dodatkowo wgraj konfigurację nginksa
+    index.html  (kopia viewer.html)           -> /var/www/osmsfm/
+    store.py, server/ingest.py                -> /opt/osmsfm/
+    server/osmsfm-ingest.service              -> /etc/systemd/system/
+    deploy/osmsfm.nginx.conf  (z --nginx)     -> /etc/nginx/sites-available/osmsfm
 
-Wycinki jadą przyrostowo: skrypt pyta serwer, które już ma, i wysyła tylko brakujące
-(jeden tar przez scp, rozpakowany po stronie serwera). Pierwsza publikacja to kilkadziesiąt
-MB, każda następna tylko nowe wiersze.
+Potem restartuje odbiornik i sprawdza /api/health. Token (`/etc/osmsfm/token`) zakłada
+tylko wtedy, gdy go nie ma, i wypisuje go na końcu, żeby dało się rozdać znajomym.
+
+    .venv\\Scripts\\python publish.py            # kod + unit + restart
+    .venv\\Scripts\\python publish.py --nginx    # dodatkowo konfiguracja nginksa
 
 Wymaga działającego `ssh rimhaven` i `scp` w PATH, jak deploy/deploy.ps1.
 """
 
 from __future__ import annotations
 
-import io
-import json
-import shutil
 import subprocess
 import sys
-import tarfile
-from datetime import datetime
 from pathlib import Path
 
-from PIL import Image
-
 HERE = Path(__file__).resolve().parent
-PUBLIC = HERE / "data" / "public"
 REMOTE = "rimhaven"
-DOCS = "/var/www/osmsfm"
 DOMAIN = "osmsfm.duckdns.org"
+WEB = "/var/www/osmsfm"
+APP = "/opt/osmsfm"
 NGINX_CONF = HERE.parent / "deploy" / "osmsfm.nginx.conf"
 
 
-def build(db_path: Path) -> dict:
-    import tracker
-
-    store = tracker.Store(db_path)
-    items = store.items()
-    obs = {it["name"]: store.obs(it["name"]) for it in items}
-    for rows in obs.values():
-        for o in rows:
-            o.pop("conf", None)
-    data = {"generated": datetime.now().isoformat(timespec="seconds"), "items": items, "obs": obs}
-    PUBLIC.mkdir(parents=True, exist_ok=True)
-    (PUBLIC / "data.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    shutil.copy(HERE / "viewer.html", PUBLIC / "index.html")
-    crops = PUBLIC / "crops"
-    crops.mkdir(exist_ok=True)
-    src = store.crops
-    n = 0
-    for rows in obs.values():
-        for o in rows:
-            p = src / f"{o['id']}.png"
-            q = crops / p.name
-            if p.exists() and not q.exists():
-                # RGB PNG ma ~40 KB, paleta 128 kolorów ~8 KB; to UI z pixel artem, różnicy nie widać
-                Image.open(p).convert("RGB").quantize(128, dither=Image.Dither.NONE).save(q, optimize=True)
-                n += 1
-    print(f"zbudowano data/public: {len(items)} przedmiotów, {sum(len(r) for r in obs.values())} obserwacji, {n} nowych wycinków")
-    return data
-
-
-def _run(args: list[str], capture: bool = False) -> str:
-    r = subprocess.run(args, capture_output=capture, text=True)
+def run(args: list[str]) -> str:
+    r = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=600)
     if r.returncode != 0:
-        raise SystemExit(f"nie przeszło: {' '.join(args)}\n{r.stderr if capture else ''}")
-    return r.stdout if capture else ""
+        raise SystemExit(f"nie przeszło: {' '.join(args)}\n{r.stderr.strip()}")
+    return r.stdout
 
 
-def upload(nginx: bool) -> None:
-    if nginx:
-        print("konfiguracja nginksa...")
-        _run(["scp", str(NGINX_CONF), f"{REMOTE}:/tmp/osmsfm.nginx.conf"])
-        _run(["ssh", REMOTE, " && ".join([
-            f"mkdir -p {DOCS}/crops",
-            "mv /tmp/osmsfm.nginx.conf /etc/nginx/sites-available/osmsfm",
-            "ln -sf /etc/nginx/sites-available/osmsfm /etc/nginx/sites-enabled/osmsfm",
-            "nginx -t",
-        ])])
-    print("sprawdzam, które wycinki serwer już ma...")
-    have = set(_run(["ssh", REMOTE, f"mkdir -p {DOCS}/crops && ls {DOCS}/crops"], capture=True).split())
-    local = sorted(p for p in (PUBLIC / "crops").glob("*.png") if p.name not in have)
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        tar.add(PUBLIC / "index.html", arcname="index.html")
-        tar.add(PUBLIC / "data.json", arcname="data.json")
-        for p in local:
-            tar.add(p, arcname=f"crops/{p.name}")
-    tmp = PUBLIC / "upload.tar.gz"
-    tmp.write_bytes(buf.getvalue())
-    print(f"wysyłam {tmp.stat().st_size / 1e6:.1f} MB ({len(local)} nowych wycinków)...")
-    _run(["scp", str(tmp), f"{REMOTE}:/tmp/osmsfm.tar.gz"])
-    tmp.unlink()
-    _run(["ssh", REMOTE, " && ".join([
-        f"tar -xzf /tmp/osmsfm.tar.gz -C {DOCS}",
-        "rm /tmp/osmsfm.tar.gz",
-        f"chown -R www-data:www-data {DOCS}",
-        f"find {DOCS} -type d -exec chmod 755 {{}} +",
-        f"find {DOCS} -type f -exec chmod 644 {{}} +",
-        "systemctl reload nginx",
-    ])])
-    code = _run(["ssh", REMOTE, f'curl -s -o /dev/null -w "%{{http_code}}" --resolve {DOMAIN}:80:127.0.0.1 http://{DOMAIN}/data.json'], capture=True).strip()
-    print(f"serwer odpowiada {code} na http://{DOMAIN}/data.json (po HTTPS dopiero z certyfikatem)")
+def ssh(*cmds: str) -> str:
+    return run(["ssh", REMOTE, " && ".join(cmds)])
 
 
 def main() -> int:
-    build_only = "--build" in sys.argv
-    db = HERE / "data" / "prices.sqlite"
-    build(db)
-    if not build_only:
-        upload("--nginx" in sys.argv)
+    nginx = "--nginx" in sys.argv
+    print("pliki...")
+    run(["scp", str(HERE / "viewer.html"), f"{REMOTE}:/tmp/osmsfm.index.html"])
+    run(["scp", str(HERE / "store.py"), str(HERE / "server" / "ingest.py"), f"{REMOTE}:/tmp/"])
+    run(["scp", str(HERE / "server" / "osmsfm-ingest.service"), f"{REMOTE}:/tmp/"])
+    if nginx:
+        run(["scp", str(NGINX_CONF), f"{REMOTE}:/tmp/osmsfm.nginx.conf"])
+    print("instalacja na serwerze...")
+    ssh(
+        f"mkdir -p {WEB}/crops {APP} /var/lib/osmsfm /etc/osmsfm",
+        f"mv /tmp/osmsfm.index.html {WEB}/index.html",
+        f"mv /tmp/store.py /tmp/ingest.py {APP}/",
+        "mv /tmp/osmsfm-ingest.service /etc/systemd/system/osmsfm-ingest.service",
+        # token: tylko gdy go nie ma; www-data ma go czytać, nikt inny
+        "[ -s /etc/osmsfm/token ] || (openssl rand -hex 16 > /etc/osmsfm/token)",
+        "chown root:www-data /etc/osmsfm/token", "chmod 640 /etc/osmsfm/token",
+        f"chown -R www-data:www-data {WEB} /var/lib/osmsfm",
+        f"chmod 755 {WEB} {WEB}/crops", f"chmod 644 {WEB}/index.html",
+        "systemctl daemon-reload",
+        "systemctl enable --now osmsfm-ingest.service",
+        "systemctl restart osmsfm-ingest.service",
+        *(["mv /tmp/osmsfm.nginx.conf /etc/nginx/sites-available/osmsfm", "nginx -t", "systemctl reload nginx"] if nginx else []),
+    )
+    print("sprawdzenie...")
+    out = ssh("sleep 1", f'curl -s --resolve {DOMAIN}:443:127.0.0.1 https://{DOMAIN}/api/health',
+              "echo", "systemctl is-active osmsfm-ingest.service",
+              "cat /etc/osmsfm/token")
+    lines = out.strip().splitlines()
+    print("  /api/health:", lines[0] if lines else "?")
+    print("  usługa:", lines[1] if len(lines) > 1 else "?")
+    print("  token dla trackerów:", lines[2] if len(lines) > 2 else "?")
     return 0
 
 

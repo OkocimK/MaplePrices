@@ -266,15 +266,31 @@ Kolumna `expires` dochodzi do starej bazy przez `ALTER TABLE` przy starcie.
 - Licznik sklepu nieczytelny w 22 wierszach (0,6%), zakres wygaśnięć 15 min do 47,9 h.
 - Wzorce ikon przebudowane z 886 wierszy z tej sesji (poprzednie z 274 leżą w temp).
 
-## Publikacja: https://osmsfm.duckdns.org/ (12 września 2026)
+## Publikacja: https://osmsfm.duckdns.org/ i wspólna baza (13 września 2026)
 
-Strona statyczna na hoście rimhaven, obok kalkulatora. `publish.py` liczy zestawienie
-(`Store.items`, `Store.obs`) w chwili publikacji, zapisuje `data/public/data.json`,
-kopiuje `viewer.html` jako `index.html` i wycinki jako PNG z paletą 128 kolorów (bez
-ditheringu, ~16 KB zamiast 40), po czym wysyła tar przez scp; wycinki tylko brakujące.
-`viewer.html` sam wykrywa tryb: gdy `/api/state` nie odpowiada, czyta `data.json`, chowa
-on/off, log i przyciski usuń, a w nagłówku pokazuje „stan z <czas>". Szczegóły hostingu
-w `deploy/README.md`. Po nowej sesji: `publish.py` i strona jest świeża.
+Plan jest taki, że trackera dostają znajomi, więc dane nie mogą jechać przez ssh. Na hoście
+chodzi **odbiornik** `server/ingest.py` (biblioteka standardowa, systemd `osmsfm-ingest`,
+`www-data`, 127.0.0.1:8781, nginx przekazuje tam `/api/`). Tracker po stronie klienta
+wysyła wiersze paczkami po 150 przez HTTPS z tokenem (`sync.py`, config w `data/config.json`,
+postęp w `data/sync.json`), z wycinkiem PNG w base64. Serwer deduplikuje po (właściciel,
+nazwa, cena, wykupiony) w oknie ±10 min wokół `ts` wiersza, więc ta sama oferta widziana
+przez dwie osoby wchodzi raz, zapisuje wycinki do `/var/www/osmsfm/crops/<id serwera>.png`
+i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`.
+
+- `store.py` to wspólna baza dla klienta i serwera, bez Pillow. Kolumna `client` = nick.
+- Wysyłka w tle (`tracker.Uploader`): co 5 min podczas zbierania, po wyłączeniu F9 i na
+  koniec; przy braku sieci wiersze czekają lokalnie. `--no-sync` wyłącza.
+- `publish.py` wgrywa już tylko kod serwera, unit, `index.html` i (z `--nginx`) konfigurację;
+  zakłada token w `/etc/osmsfm/token`, gdy go nie ma, i wypisuje go. Baza serwera:
+  `/var/lib/osmsfm/prices.sqlite`.
+- Paczka dla znajomych: `make_dist.py` -> `dist/osmsfm-tracker.zip` (kod, wzorce, viewer,
+  `install.bat`, `run.bat`, `README-znajomi.md`). Pierwszy `run.bat` pyta o token i nick.
+  Wymaga Pythona 3.12 z python.org; exe przez PyInstaller to opcja na później, winocr
+  i pywin32 pakują się kapryśnie.
+- Zasiew: lokalna baza z sesji 2 (3650 wierszy) wysłana przez `sync.py` w 46 s.
+- Lokalny viewer (:8778) dalej pokazuje lokalną bazę; „usuń" działa tylko lokalnie, serwer
+  nie ma jeszcze moderacji. `MemoryCurrent` usługi ~100 MB zaraz po zasiewie (w tym cache
+  plików), limit 150 MB w unicie.
 
 ## M5b, tooltip dla obciętych nazw (do zrobienia)
 
