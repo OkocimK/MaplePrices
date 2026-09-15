@@ -10,41 +10,60 @@
     --accent: #e0862a; --accent2: #b85c14; --sold: #8a8a8a; --good: #3e7d3a; --bad: #a33a2a;
     --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
   }
-  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
-  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--line); position: sticky; top: 0; flex-wrap: wrap; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--line); flex: none; flex-wrap: wrap; }
   h1 { font-size: 18px; margin: 0; }
   .tog { font: inherit; font-weight: 700; padding: 6px 16px; border-radius: 6px; border: 2px solid var(--accent2); background: var(--accent); color: #fff; cursor: pointer; }
   .tog.off { background: #ddd; color: #444; border-color: #999; }
   .stat { color: var(--muted); font-size: 13px; }
   .dl { margin-left: auto; font-weight: 700; color: var(--accent2); text-decoration: none; border: 2px solid var(--accent2); border-radius: 6px; padding: 5px 12px; }
   .dl:hover { background: var(--accent); color: #fff; }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 16px; }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  /* The page itself does not scroll: the results table and the observations list scroll inside their panels. */
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr); gap: 16px; padding: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 0; }
   .about { grid-column: 1 / -1; }
   .about summary { cursor: pointer; font-weight: 700; }
   .about p, .about li { font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .results { display: flex; flex-direction: column; }
+  .tablewrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  th, td { padding: 4px 5px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  /* The name may wrap so the table fits its panel; when it still has to scroll sideways the name stays put. */
+  td:first-child { white-space: normal; min-width: 160px; position: sticky; left: 0; background: #fff; }
+  th:first-child { position: sticky; left: 0; z-index: 2; }
+  tr.item:hover td:first-child { background: #f3e8d3; }
+  tr.item.sel td:first-child { background: #f6dcb8; }
+  th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; }
   th.n { text-align: right; }
   tr.item { cursor: pointer; }
   tr.item:hover { background: #f3e8d3; }
   tr.item.sel { background: #f6dcb8; }
   tr.other td:first-child { color: var(--muted); }
   .q { color: var(--bad); }
+  .pager { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .pager button, .pager select { font: inherit; font-size: 13px; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+  .pager button:disabled { color: #bbb; cursor: default; }
   .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
-  .obs { display: grid; grid-template-columns: 1fr; gap: 6px; max-height: 80vh; overflow: auto; }
+  aside { display: flex; flex-direction: column; }
+  .obs { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; gap: 6px; overflow: auto; align-content: start; }
   .ob { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: #fff; }
   .ob img { grid-column: 1 / -1; width: 100%; image-rendering: pixelated; border: 1px solid var(--line); }
   .ob .p { font-family: var(--mono); font-weight: 700; }
   .ob .p.sold { color: var(--sold); text-decoration: line-through; }
   .ob .p.old { color: var(--muted); }
-  .ob .m { color: var(--muted); font-size: 12px; }
+  .ob .m { color: var(--muted); font-size: 12px; white-space: normal; }
   .ob button { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--bad); color: var(--bad); background: #fff; cursor: pointer; }
-  .log { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 160px; overflow: auto; margin-top: 8px; }
+  .log { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; margin-top: 8px; flex: none; }
   .filter { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; width: 260px; }
+  @media (max-width: 1000px) {
+    /* Narrow screens: one column, the page scrolls as a whole again. */
+    body { display: block; height: auto; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+    .tablewrap { max-height: 70vh; }
+    .obs { max-height: 70vh; }
+  }
 </style>
 </head>
 <body>
@@ -65,27 +84,39 @@
     <p>To contribute prices:</p>
     <ol>
       <li><a href="download/osmsfm-tracker.zip">Download the tracker</a> (Windows, one exe, no install) and unzip it anywhere.</li>
-      <li>Run the game <b>in a window</b> at <b>1920x1080</b>. Other resolutions are not recognised.</li>
+      <li>Run the game at <b>1920x1080</b>, windowed or full screen. Other window sizes work too, but the game shrinks its UI
+        with the window and small windows read worse.</li>
       <li>Run <code>osmsfm-tracker.exe</code>. Windows SmartScreen will warn about an unknown publisher the first time:
         click "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.</li>
       <li>Press <b>F9</b> to start collecting, walk through the FM shops, press <b>F9</b> again to stop. <b>Ctrl+F9</b> quits.
-        The cursor may rest on the shop window; the row under it is skipped and picked up in the next frame.</li>
+        The cursor may rest on the shop window; the row under it is skipped and picked up in the next frame.
+        If the console keeps saying 0 shops, press <b>F10</b> with a shop open: it saves what the tracker sees to
+        <code>data\debug\</code>, send that file.</li>
     </ol>
     <p>Data is uploaded every 5 minutes while collecting and once more when you stop. It is anonymous: the tracker signs its
       uploads with a random id like <code>anon-3f9c2a</code>. What is collected: item name, price, whether the offer is sold out
       (greyed), the shop owner's name, shop title, map and channel, the shop's remaining time and a small crop of the row for
       verification. Nothing about your character, account or chat.</p>
   </details>
-  <section class="panel">
-    <table>
-      <thead><tr>
-        <th>item</th><th class="n">n</th>
-        <th class="n">live</th><th class="n">ask min now</th><th class="n">ask med 7d</th>
-        <th class="n">sold med 7d</th><th class="n">sold max 7d</th>
-        <th class="n">buy up to</th><th class="n">sell at</th><th>last seen</th>
-      </tr></thead>
-      <tbody id="items"></tbody>
-    </table>
+  <section class="panel results">
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>item</th><th class="n">n</th>
+          <th class="n">live</th><th class="n">ask min now</th><th class="n">ask med 7d</th>
+          <th class="n">sold med 7d</th><th class="n">sold max 7d</th>
+          <th class="n">buy up to</th><th class="n">sell at</th><th>last seen</th>
+        </tr></thead>
+        <tbody id="items"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button id="prev">&lsaquo; prev</button>
+      <span id="pageinfo"></span>
+      <button id="next">next &rsaquo;</button>
+      <label>per page <select id="pagesize"><option>25</option><option selected>50</option><option>100</option><option value="0">all</option></select></label>
+      <span id="count"></span>
+    </div>
     <p class="hint">Ask = listed (active) prices, sold = greyed-out rows, i.e. prices somebody actually paid; the cheapest go first, so treat sold as a floor.
       "Live" = offers whose shop is still up (from the shop's timer) and which were not seen sold later; expired ones stay in history.
       "Buy up to" = lower quartile of asks from the last 7 days, "sell at" = between the sold median and the lowest live ask. A heuristic, not gospel.
@@ -101,11 +132,41 @@
 (() => {
   const $ = s => document.querySelector(s);
   const fmt = v => v == null ? '' : v.toLocaleString('en-US');
-  let items = [], sel = null;
+  let items = [], sel = null, page = 1;
   // Static mode: the published page has no tracker.py behind it, it reads data.json
   // (the summary computed at publish time) and changes nothing.
   let STATIC = null;
 
+  // Timestamps in the data are naive local time of the tracker that recorded them (the friends
+  // share one time zone). Compare them with the viewer's local time in the same ISO shape.
+  function nowIso() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  // data.json is regenerated only when a batch arrives, so its "live" counts age until the next
+  // upload (and the server clock runs in UTC). Recompute liveness here, at display time: an active
+  // offer is live while its shop timer has not run out and the same offer was not seen sold later.
+  function refreshLive() {
+    if (!STATIC) return;
+    const now = nowIso();
+    for (const it of items) {
+      const rows = STATIC.obs[it.name] || [];
+      const lastSold = {};  // owner|price -> sold flag of the most recent observation
+      for (const o of rows) {  // rows are newest first
+        const k = o.owner + '|' + o.price;
+        if (!(k in lastSold)) lastSold[k] = o.sold;
+      }
+      let n = 0, min = null;
+      for (const o of rows) {
+        o.expired = o.expires <= now;
+        if (o.sold || o.expired || lastSold[o.owner + '|' + o.price]) continue;
+        n++;
+        if (min == null || o.price < min) min = o.price;
+      }
+      it.n_now = n;
+      it.ask_min_now = min;
+    }
+  }
   function hints(it) {
     const buy = it.ask_q1_7d ?? it.ask_min_now;
     let sell = null;
@@ -114,14 +175,23 @@
     else if (it.sold_med_7d != null) sell = it.sold_med_7d;
     return [buy, sell];
   }
+  function pageSize() { return Number($('#pagesize').value); }
   function renderItems() {
+    refreshLive();
     const f = $('#filter').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const onlyNow = $('#onlyNow').checked;
-    const tb = $('#items'); tb.innerHTML = '';
-    for (const it of items) {
+    const shown = items.filter(it => {
       const nm = it.name.toLowerCase();
-      if (f.length && !f.every(w => nm.includes(w))) continue;
-      if (onlyNow && !it.n_now && it.name !== sel) continue;
+      if (f.length && !f.every(w => nm.includes(w))) return false;
+      if (onlyNow && !it.n_now && it.name !== sel) return false;
+      return true;
+    });
+    const size = pageSize() || shown.length || 1;
+    const pages = Math.max(1, Math.ceil(shown.length / size));
+    page = Math.min(Math.max(page, 1), pages);
+    const start = (page - 1) * size;
+    const tb = $('#items'); tb.innerHTML = '';
+    for (const it of shown.slice(start, start + size)) {
       const [buy, sell] = hints(it);
       const tr = document.createElement('tr');
       tr.className = 'item' + (it.scroll ? '' : ' other') + (it.name === sel ? ' sel' : '');
@@ -133,6 +203,10 @@
       tr.onclick = () => { sel = it.name; renderItems(); loadObs(); };
       tb.appendChild(tr);
     }
+    $('#pageinfo').textContent = `page ${page} / ${pages}`;
+    $('#prev').disabled = page <= 1;
+    $('#next').disabled = page >= pages;
+    $('#count').textContent = `${shown.length} of ${items.length} items`;
   }
   async function loadItems() {
     if (STATIC) { items = STATIC.items; renderItems(); return; }
@@ -168,7 +242,9 @@
     $('#log').hidden = true;
     $('#dl').hidden = false;
     $('#about').hidden = false;
-    $('#stat').textContent = `updated ${STATIC.generated.replace('T', ' ').slice(0, 16)} · ${STATIC.items.length} items`;
+    const gen = new Date(STATIC.generated + 'Z');  // the server writes it in UTC
+    const p = n => String(n).padStart(2, '0');
+    $('#stat').textContent = `updated ${gen.getFullYear()}-${p(gen.getMonth() + 1)}-${p(gen.getDate())} ${p(gen.getHours())}:${p(gen.getMinutes())} · ${STATIC.items.length} items`;
     await loadItems();
   }
   async function poll() {
@@ -189,10 +265,14 @@
     }
   }
   $('#tog').onclick = async () => { await fetch('/api/toggle', { method: 'POST' }); await poll(); };
-  $('#filter').oninput = renderItems;
-  $('#onlyNow').onchange = renderItems;
+  $('#filter').oninput = () => { page = 1; renderItems(); };
+  $('#onlyNow').onchange = () => { page = 1; renderItems(); };
+  $('#prev').onclick = () => { page--; renderItems(); };
+  $('#next').onclick = () => { page++; renderItems(); };
+  $('#pagesize').onchange = () => { page = 1; renderItems(); };
   poll().then(() => { if (!STATIC) loadItems(); });
   setInterval(poll, 2000);
+  setInterval(() => { if (STATIC) renderItems(); }, 60000);  // offers keep expiring while the tab is open
 })();
 </script>
 </body>
