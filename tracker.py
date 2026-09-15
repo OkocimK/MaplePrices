@@ -10,9 +10,10 @@ Skróty (globalne):
 
 Co robi w pętli (co ~500 ms, tylko gdy włączone):
 1. zrzut obszaru klienta okna gry (mss), pozycja kursora z systemu (win32api),
-2. `recognize.recognize` -> obserwacje; okno sklepu jest szukane w klatce (klient gry może mieć
-   inną wysokość niż referencyjne 1920×1009, okna UI można przesuwać), minimapa też, a bez niej
-   oferta idzie bez mapy i kanału; wiersze pod kursorem i z niepewną ceną odpadają,
+2. `recognize.recognize` -> obserwacje; klatka jest skalowana do referencyjnej skali UI (gra
+   skaluje UI z rozmiarem okna), okno sklepu jest szukane w klatce (okna UI można przesuwać),
+   minimapa też, a bez niej oferta idzie bez mapy i kanału; wiersze pod kursorem i z niepewną
+   ceną odpadają,
 3. deduplikacja: ta sama (właściciel, nazwa, cena, wykupiony) w ciągu 10 minut = ta sama
    oferta, nie dopisujemy; po dłuższym czasie to nowa obserwacja,
 4. zapis do `data/prices.sqlite`, wycinek wiersza do `data/crops/<id>.png` (do audytu).
@@ -51,6 +52,7 @@ from paths import RES_DIR as HERE  # viewer.html leży w zasobach, także w exe
 PORT = 8778
 TOGGLE_KEY = "f9"
 SNAP_KEY = "f10"
+DEBUG_MAX = 8
 QUIT_KEY = "ctrl+f9"
 PERIOD = 0.5
 
@@ -65,7 +67,8 @@ class State:
         self.lock = threading.Lock()
         self.last_owner: str | None = None
         self.client: str | None = None  # nick zbierającego, podpis wierszy
-        self.minimap_seen: bool | None = None  # żeby o schowanej minimapie powiedzieć raz, nie przy każdym sklepie
+        self.minimap_state: str | None = "?"  # żeby o schowanej minimapie powiedzieć raz, nie przy każdym sklepie
+        self.debug_saved = 0  # wycinków diagnostycznych na sesję najwyżej DEBUG_MAX
         self.origins: set[tuple[int, int]] = set()  # przesunięcia okna sklepu już zgłoszone w logu
         # Wysyłka na serwer (sync.py) chodzi w tle: co SYNC_MIN podczas zbierania,
         # gdy przybyły nowe oferty, i zaraz po wyłączeniu zbierania. Naraz najwyżej jedna.
@@ -194,17 +197,21 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
         if r.origin != (0, 0) and r.origin not in state.origins:
             state.origins.add(r.origin)
             state.note(f"shop window found {r.origin[0]:+d},{r.origin[1]:+d} px from the reference layout")
-        seen = r.minimap is not None
-        if seen != state.minimap_seen:
-            state.minimap_seen = seen
-            if not seen:
+        if r.minimap != state.minimap_state:
+            state.minimap_state = r.minimap
+            if r.minimap is None:
                 state.note("minimap not visible: offers are stored without map and channel")
-        if (seen and r.channel is None) or r.ttl_min is None:
-            # nieczytelna minimapa albo licznik: odłóż wycinki do obejrzenia
+            elif r.minimap == "map":
+                state.note("minimap shows no map name (shrunk with the \"-\" button?): offers are stored without map and channel")
+        readable = r.minimap in ("open", "collapsed")
+        if ((readable and r.channel is None) or r.ttl_min is None) and state.debug_saved < DEBUG_MAX:
+            # nieczytelna minimapa albo licznik: odłóż wycinki do obejrzenia, ale nie bez końca
+            state.debug_saved += 1
+            frame, _ = recognize.normalize(frame)  # wycinki w tej samej skali co rozpoznanie
             dbg = DATA / "debug"
             dbg.mkdir(parents=True, exist_ok=True)
             stamp = now.strftime("%H%M%S")
-            if seen and r.channel is None:
+            if readable and r.channel is None:
                 frame.crop(r.minimap_box).save(dbg / f"{stamp}-minimap.png")
                 state.note(f"channel unreadable ({r.minimap} minimap): {r.map_raw!r}")
             if r.ttl_min is None:
@@ -317,11 +324,12 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
         sys.exit(1)
     state.note(f"game window: {win32gui.GetWindowText(hwnd)!r}")
     rect = grab.client_rect(hwnd)
+    scale = recognize.ui_scale((rect["width"], rect["height"]))
     state.note(f"game client area: {rect['width']}x{rect['height']}"
-               + ("" if rect["height"] == recognize.sf.REF_H else f" (reference {recognize.sf.REF_W}x{recognize.sf.REF_H}, the shop window is located in the frame)"))
-    if rect["width"] != recognize.sf.REF_W:
-        state.note(f"warning: the tracker is tuned for a {recognize.sf.REF_W} px wide game window; at {rect['width']} px "
-                   f"the shop window will probably not be recognised. Press {SNAP_KEY.upper()} with a shop open and send the saved frame.")
+               + ("" if abs(scale - 1.0) < 0.002 else f", frames scaled x{scale:.3f} to the reference layout"))
+    if scale > 1.25:
+        state.note(f"warning: small game window, text is blurry after scaling and reads worse. 1920x1080 is best. "
+                   f"If shops are not recognised, press {SNAP_KEY.upper()} with a shop open and send the saved frame.")
     MSS = getattr(mss, "MSS", None) or mss.mss
     sct = MSS()
 

@@ -336,12 +336,28 @@ Pierwszy znajomy z exe dostał przy każdej klatce `ValueError: klatka (1920, 10
 - **Okna UI są przesuwalne**, minimapa na pewno (okno sklepu zapewne też), i minimapa ma trzy
   stany: rozwinięta („MINI MAP", ikona, dwie linie tekstu), zwinięta do jednego paska
   „Hidden Street : Free Market<1>" z tymi samymi przyciskami [−][+][WORLD], schowana.
-- **Skala UI przy szerokości 1920 się nie zmienia** (żywa klatka kontra próbki: przyciski,
-  minimapa, dymki co do piksela te same). Jak UI zachowuje się przy innej szerokości, nie
-  wiadomo; przy innej skali separatory nie trafią w skok 75 px i sklep nie zostanie znaleziony.
+- **UI skaluje się z rozmiarem okna, i to od wysokości prostokąta 16:9 wpisanego w klienta.**
+  Zmierzone przez chwilowe przestawianie okna gry (`SetWindowPos`) i zrzut przez `PrintWindow`,
+  przy otwartym sklepie, szukając skali, przy której lokalizator trafia w skok 75 px:
+
+  | klient | skala UI względem 1920×1009 | 1009 / min(h, w·9/16) |
+  |---|---|---|
+  | 1920×1080 (znajomy, pełny ekran) | 0.93..0.94 | 0.934 |
+  | 1453×811 (okno zmniejszone) | 1.24..1.25 | 1.244 |
+  | 1920×700 (szerokie) | 1.43..1.46 | 1.441 |
+  | 1200×1009 (wysokie) | 1.47..1.49 | 1.495 |
+
+  Czyli pierwsza wersja poprawki (sam lokalizator) u znajomego by nie zadziałała: przy 1080 px
+  UI jest o 7% większe i separatory nie trafiają w 75 px. Poza skalą układ jest wyśrodkowany
+  w kliencie (przy 1200×1009 sklep leży 249 px niżej, przy 1920×700 425 px w prawo).
 
 Decyzje:
 
+- `recognize.normalize`: **klatka jest najpierw skalowana** o 1009 / min(h, w·9/16) (Lanczos),
+  pozycja kursora tak samo, i dopiero potem szukany jest sklep. Na klatkach 1920×1080 i
+  1453×811 z tym samym sklepem po normalizacji wszystkie 5 wierszy czyta się poprawnie (te same
+  ceny i nazwy, pewność 0.85..0.92). Małe okno znaczy rozmyty tekst po powiększeniu; tracker
+  ostrzega przy skali powyżej 1.25 i doradza 1920×1080.
 - `shopframe.locate`: **okno sklepu jest szukane w całej klatce** po sygnaturze listy: 5
   separatorów co 75 px, każdy to pasmo 4..5 px o jasności ≥232 z ciemną kreską (≤200) 2..3 px
   nad nim; w kolumnach tekstu x 560..840 liczony jest udział takich kolumn, separator liczy się
@@ -354,23 +370,34 @@ Decyzje:
   przeskalowana do 1600 px i klatki bez sklepu dają „zamknięty".
 - `minimap.py`: **kotwicą jest przycisk WORLD** (60×18 px, ten sam w obu stanach), szukany
   znormalizowaną korelacją szablonu przez FFT w połowie rozdzielczości i doprecyzowany w
-  pełnej (próg 0.85; na klatkach bez minimapy maksimum 0.56), a między klatkami najpierw
-  sprawdzane ostatnie miejsce. Stan po etykiecie „MINI MAP" (próg 0.8) na lewo od przycisków.
+  pełnej, a między klatkami najpierw sprawdzane ostatnie miejsce. Klatka i szablon są przed
+  korelacją rozmyte (gauss σ=1): bez rozmycia przycisk z klatki przeskalowanej z 1080 px dostawał
+  0.82 i przegrywał z fałszywym trafieniem 0.88; z rozmyciem pozytywy mają 0.96..1.0, ale
+  negatywy rosną do 0.90 (rozmyty przycisk to jasny prostokąt), więc kandydat jest dodatkowo
+  sprawdzany po kolorze: udział pomarańczowożółtych pikseli 0.68..0.76 na pozytywach, 0.00 na
+  negatywach, próg 0.3. Stan po etykiecie „MINI MAP" (próg 0.7) na lewo od przycisków.
   Prostokąt tekstu względem WORLD: rozwinięta (−110, +35)..(+68, +93), zwinięta (−357, −4)..
-  (−54, +21). **Bez minimapy mapa i kanał są None, jedna notka w logu, nie błąd.** Szablony w
+  (−54, +21). **Trzeci stan**: rozwinięta minimapa zmniejszona przyciskiem „−" pokazuje nagłówek
+  i samą mapę, bez bloku z nazwą; po pikselach trudno to odróżnić, więc rozstrzyga OCR: kanał
+  „<N>" jest w bloku zawsze, bez niego nazwa jest odrzucana (stan `map`). **Bez minimapy albo
+  bez bloku z nazwą mapa i kanał są None, jedna notka w logu, nie błąd.** Szablony w
   `minimap_templates.json` (wycięte z próbki 20260912-155301-290-001 przez `minimap.py build`).
   Test: 52 próbki „open" w referencyjnym miejscu, żywa klatka ze zwiniętym paskiem „collapsed"
-  i odczyt „Free Market<1>", minimapa wklejona w inne miejsce znajdowana, zamazana: None.
-- Tracker loguje rozmiar klienta i ostrzega przy szerokości ≠ 1920, zgłasza raz przesunięcie
-  okna sklepu, a **F10 zapisuje bieżącą klatkę do `data/debug/snap-*.png`**, żeby znajomy mógł
-  przysłać dokładnie to, co widzi tracker, zamiast opisywać.
+  i odczyt „Free Market<1>", przesunięta minimapa w klatkach 1453×811, 1920×1080, 1200×1009
+  i 1920×700 znajdowana po normalizacji, klatki bez minimapy: None.
+- Tracker loguje rozmiar klienta i skalę, ostrzega przy skali powyżej 1.25 (małe okno),
+  zgłasza raz przesunięcie okna sklepu, wycinki diagnostyczne (nieczytelny kanał, licznik)
+  zapisuje najwyżej 8 razy na sesję, a **F10 zapisuje bieżącą klatkę do
+  `data/debug/snap-*.png`**, żeby znajomy mógł przysłać dokładnie to, co widzi tracker.
 
 Otwarte:
 
-- Czy UI skaluje się przy innej szerokości niż 1920 (pokaże pierwszy znajomy z 2560 px).
+- Czy formuła skali trzyma się na ekranach o proporcjach innych niż mierzone (np. 21:9
+  i 2560×1440: przewidywana skala 0.70, tekst mniejszy, ale ostry, powinno działać).
 - `PrintWindow` zamiast `mss`: bierze zawartość okna niezależnie od tego, co je zasłania
-  (sprawdzone raz na oknie gry z flagą `PW_RENDERFULLCONTENT`, obraz pełny, nie czarny).
-  `mss` zdejmuje ekran, więc przeglądarka z podglądem albo Discord nad grą psuje klatkę.
+  (sprawdzone na oknie gry z flagą `PW_RENDERFULLCONTENT`, obraz pełny, nie czarny, także
+  fragment okna poza ekranem). `mss` zdejmuje ekran, więc przeglądarka z podglądem albo
+  Discord nad grą psuje klatkę. Warte zrobienia.
 
 ## M5b, tooltip dla obciętych nazw (do zrobienia)
 

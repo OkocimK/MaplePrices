@@ -16,11 +16,11 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 | File | What |
 |---|---|
 | `tracker.py` | main loop: capture, recognise, store, local preview on :8778, background upload |
-| `shopframe.py` | shop window geometry: finds the list in the frame (any client height, movable window), empty/sold rows |
+| `shopframe.py` | shop window geometry: finds the list in the frame (movable window), empty/sold rows |
 | `minimap.py`, `minimap_templates.json` | finds the minimap (movable, collapsed or hidden) to read map and channel |
 | `glyphs.py`, `price_glyphs.json` | price digits by template matching (Windows OCR drops numbers) |
 | `names.py`, `icons.py`, `icon_templates.json` | scroll name grammar, percent from icon colour |
-| `recognize.py` | one frame in, observations out (cursor and stale-icon guards) |
+| `recognize.py` | one frame in, observations out; scales the frame to the reference UI size first (cursor and stale-icon guards) |
 | `store.py` | SQLite schema and per-item summary, shared with the server |
 | `sync.py` | upload to the server in batches, anonymous client id |
 | `server/` | ingest service (stdlib only, systemd unit) |
@@ -37,5 +37,5 @@ py -3.12 -m venv .venv
 .venv\Scripts\python make_dist.py
 ```
 
-Requires Windows (Windows OCR, win32 capture). The game window must be 1920 px wide
-(1920x1080 windowed or full screen); the UI scale at other widths is untested.
+Requires Windows (Windows OCR, win32 capture). Any game window size works (the game scales its
+UI with the window and the tracker normalises the frame), 1920x1080 reads best.

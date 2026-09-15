@@ -4,6 +4,11 @@ Skleja `shopframe` (geometria, znajduje okno sklepu w klatce), `minimap` (gdzie 
 minimapa i w jakim stanie), winocr (nazwy, tytuł sklepu, minimapa), `glyphs` (ceny) i `names`
 (kanoniczna nazwa scrolla). Nic tu nie dotyka gry ani dysku.
 
+Skala UI gry zależy od rozmiaru okna: gra dopasowuje układ do największego prostokąta 16:9
+mieszczącego się w obszarze klienta (zmierzone na 4 rozmiarach, patrz PLAN.md), więc klatka jest
+najpierw skalowana tak, żeby ten prostokąt miał wysokość referencyjną 1009 px, i dopiero wtedy
+szukane jest okno sklepu. Pozycja kursora jest skalowana tak samo.
+
 Minimapa jest przesuwalna, może być zwinięta do jednego paska albo schowana; bez niej oferta
 idzie bez mapy i kanału, to nie jest błąd.
 
@@ -109,9 +114,10 @@ class Result:
     stale_icons: bool = False  # w klatce była ikona niezgodna z procentem w tekście
     skipped_stale: int = 0  # wiersze pominięte, bo brałyby procent z takiej klatki
     map_raw: str | None = None  # minimapa jak ją przeczytał OCR (do diagnostyki kanału)
-    minimap: str | None = None  # 'open', 'collapsed' albo None, gdy minimapy nie widać
+    minimap: str | None = None  # 'open', 'collapsed', 'map' (rozwinięta bez bloku z nazwą) albo None, gdy nie widać
     minimap_box: tuple[int, int, int, int] | None = None  # skąd czytana była mapa
     origin: tuple[int, int] = (0, 0)  # przesunięcie okna sklepu względem geometrii referencyjnej
+    scale: float = 1.0  # ile razy klatka została powiększona przed rozpoznaniem (1.0 = klient 16:9 o wysokości 1009)
     timer_raw: str | None = None  # licznik sklepu jak go przeczytał OCR
     ttl_min: int | None = None  # minuty do zniknięcia sklepu, None gdy nieczytelny
 
@@ -167,13 +173,30 @@ def parse_minimap(text: str) -> tuple[str | None, int | None]:
     return name, (int(ch) if ch else None)
 
 
+def ui_scale(size: tuple[int, int]) -> float:
+    """Ile razy powiększyć klatkę o tym rozmiarze, żeby UI miało skalę referencyjną."""
+    w, h = size
+    return sf.REF_H / min(h, w * 9 / 16)
+
+
+def normalize(frame: Image.Image) -> tuple[Image.Image, float]:
+    """Klatka w skali referencyjnej i użyty współczynnik (1.0 = bez zmian)."""
+    s = ui_scale(frame.size)
+    if abs(s - 1.0) < 0.002:
+        return frame, 1.0
+    return frame.resize((round(frame.width * s), round(frame.height * s)), Image.LANCZOS), s
+
+
 def recognize(frame: Image.Image, cursor: tuple[int, int] | None = None) -> Result:
     """`cursor` to pozycja kursora we współrzędnych obszaru klienta okna gry, albo None."""
+    frame, scale = normalize(frame)
+    if cursor is not None and scale != 1.0:
+        cursor = (round(cursor[0] * scale), round(cursor[1] * scale))
     fr = sf.parse(frame)
     if not fr.open:
-        return Result(False)
+        return Result(False, scale=scale)
     title = ocr(fr.title)
-    res = Result(True, owner=parse_title(title), title=title, origin=fr.origin)
+    res = Result(True, owner=parse_title(title), title=title, origin=fr.origin, scale=scale)
     res.timer_raw = ocr(frame.crop(sf.shift(sf.TIMER, fr.origin)))
     res.ttl_min = parse_timer(res.timer_raw)
     mm = _mm().find(frame)
@@ -181,6 +204,12 @@ def recognize(frame: Image.Image, cursor: tuple[int, int] | None = None) -> Resu
         res.minimap, res.minimap_box = mm
         res.map_raw = ocr(frame.crop(res.minimap_box), scale=2)
         res.map, res.channel = parse_minimap(res.map_raw)
+        if res.channel is None and "free" not in res.map_raw.lower():
+            # Rozwinięta minimapa zmniejszona przyciskiem „−" pokazuje samą mapę bez bloku z nazwą,
+            # a OCR czyta wtedy śmieci z obrazka mapy. Kanał „<N>" jest w tym bloku zawsze, więc
+            # bez niego nazwa nie jest wiarygodna: oferta idzie bez mapy, jak przy schowanej minimapie.
+            res.map = None
+            res.minimap = "map"
     g = _g()
     for r in fr.rows:
         if r.empty:
@@ -233,7 +262,7 @@ if __name__ == "__main__":
             if not r.open:
                 print(f"{f}: sklep zamknięty")
                 continue
-            print(f"{f}: {r.owner!r} @ {r.map}<{r.channel}> (minimapa {r.minimap}, sklep @{r.origin}) znika za {r.ttl_min} min ({r.timer_raw!r})  pominięte: kursor {r.skipped_cursor}, cena {r.skipped_price}, nieświeże ikony {r.skipped_stale}")
+            print(f"{f}: {r.owner!r} @ {r.map}<{r.channel}> (minimapa {r.minimap}, sklep @{r.origin}, skala {r.scale:.3f}) znika za {r.ttl_min} min ({r.timer_raw!r})  pominięte: kursor {r.skipped_cursor}, cena {r.skipped_price}, nieświeże ikony {r.skipped_stale}")
             for o in r.obs:
                 flag = "SOLD" if o.sold else "    "
                 kind = ("scroll" if o.complete else "scroll?") if o.scroll else "inny"

@@ -8,9 +8,16 @@ Może też być schowane całkiem; wtedy oferty idą bez mapy i kanału, to nie 
 
 Kotwicą jest przycisk WORLD (ten sam w obu stanach): szukany znormalizowaną korelacją
 szablonu w połowie rozdzielczości, potem doprecyzowany w pełnej, a między klatkami
-sprawdzany najpierw w ostatnim znanym miejscu. Stan rozróżnia etykieta „MINI MAP" na lewo
-od przycisków. Szablony leżą w `minimap_templates.json`, wycięte z próbki referencyjnej
-1920×1009 przez:
+sprawdzany najpierw w ostatnim znanym miejscu. Klatka i szablon są przed korelacją lekko
+rozmyte (gauss σ=1): bez tego przycisk z klatki przeskalowanej do skali referencyjnej
+(inny rozmiar okna gry) dostawał 0.8 i przegrywał z fałszywymi trafieniami, z rozmyciem
+dostaje 0.95. Rozmycie podnosi jednak też fałszywe trafienia (rozmyty przycisk to jasny
+prostokąt, jasne okna dają 0.9), więc kandydat musi być jeszcze pomarańczowożółty jak przycisk
+(udział takich pikseli 0.68..0.76 na pozytywach, 0.00 na negatywach).
+Stan rozróżnia etykieta „MINI MAP" na lewo od przycisków. Rozwinięta minimapa
+może też pokazywać samą mapę bez bloku z nazwą (po zmniejszeniu przyciskiem „−"); tego stanu
+nie widać po pikselach, rozstrzyga OCR w recognize (brak kanału „<N>" w tekście).
+Szablony leżą w `minimap_templates.json`, wycięte z próbki referencyjnej 1920×1009 przez:
 
     .venv\\Scripts\\python minimap.py build samples\\klatka.png
     .venv\\Scripts\\python minimap.py test samples\\*.png     # gdzie i w jakim stanie
@@ -23,7 +30,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from paths import RES_DIR
 
@@ -37,10 +44,12 @@ LABEL_AT = (LABEL_BOX[0] - WORLD_BOX[0], LABEL_BOX[1] - WORLD_BOX[1])
 TEXT_OPEN = (84 - WORLD_BOX[0], 50 - WORLD_BOX[1], 262 - WORLD_BOX[0], 108 - WORLD_BOX[1])  # dwie linie pod nagłówkiem
 TEXT_COLLAPSED = (-357, -4, -54, 21)  # pasek na lewo od przycisków, do przycisku „−"
 
-WORLD_MIN = 0.85  # korelacja przycisku w pełnej rozdzielczości
+WORLD_MIN = 0.8  # korelacja przycisku w pełnej rozdzielczości (po rozmyciu; negatywy dają do 0.6)
 WORLD_MIN_HALF = 0.6  # kandydat z połowy rozdzielczości
-LABEL_MIN = 0.8
+LABEL_MIN = 0.7
 REFINE = 3  # promień doprecyzowania w px
+BLUR = 1.0  # sigma rozmycia klatki i szablonów przed korelacją
+YELLOW_MIN = 0.3  # tyle pikseli kandydata musi mieć kolor wypełnienia przycisku
 
 
 def _ncc_map(g: np.ndarray, t: np.ndarray) -> np.ndarray:
@@ -91,29 +100,44 @@ def _half(g: np.ndarray) -> np.ndarray:
     return g[:h, :w].reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
 
 
+def _blur(im: Image.Image) -> np.ndarray:
+    return np.asarray(im.convert("L").filter(ImageFilter.GaussianBlur(BLUR)), dtype=np.float64)
+
+
+def _yellow_frac(a: np.ndarray, x: int, y: int) -> float:
+    """Udział pikseli w kolorze wypełnienia przycisku WORLD w prostokącie szablonu o rogu (x, y)."""
+    h, w = WORLD_BOX[3] - WORLD_BOX[1], WORLD_BOX[2] - WORLD_BOX[0]
+    box = a[max(y, 0) : y + h, max(x, 0) : x + w].astype(np.int16)
+    if box.size == 0:
+        return 0.0
+    r, g, b = box[..., 0], box[..., 1], box[..., 2]
+    return float(((r > 180) & (g > 110) & (b < 120) & (r - b > 80)).mean())
+
+
 class Minimap:
     def __init__(self, path: Path = TEMPLATE_FILE):
         d = json.loads(path.read_text(encoding="utf-8"))
-        self.world = np.asarray(d["world"], dtype=np.float64)
-        self.label = np.asarray(d["label"], dtype=np.float64)
+        self.world = _blur(Image.fromarray(np.asarray(d["world"], dtype=np.uint8)))
+        self.label = _blur(Image.fromarray(np.asarray(d["label"], dtype=np.uint8)))
         self.world_half = _half(self.world)
         self.last: tuple[int, int] | None = None
 
     def find(self, frame: Image.Image) -> tuple[str, tuple[int, int, int, int]] | None:
         """(stan, prostokąt z tekstem mapy) albo None, gdy minimapy nie widać.
         Stan to 'open' (rozwinięta) albo 'collapsed' (zwinięty pasek)."""
-        g = np.asarray(frame.convert("L"), dtype=np.float64)
+        g = _blur(frame)
+        a = np.asarray(frame.convert("RGB"))
         pos = None
         if self.last is not None:
             x, y, s = _best_near(g, self.world, *self.last, REFINE)
-            if s >= WORLD_MIN:
+            if s >= WORLD_MIN and _yellow_frac(a, x, y) >= YELLOW_MIN:
                 pos = (x, y)
         if pos is None:
             m = _ncc_map(_half(g), self.world_half)
             y2, x2 = divmod(int(m.argmax()), m.shape[1])
             if m[y2, x2] >= WORLD_MIN_HALF:
                 x, y, s = _best_near(g, self.world, 2 * x2, 2 * y2, REFINE)
-                if s >= WORLD_MIN:
+                if s >= WORLD_MIN and _yellow_frac(a, x, y) >= YELLOW_MIN:
                     pos = (x, y)
         self.last = pos
         if pos is None:

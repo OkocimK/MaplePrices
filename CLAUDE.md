@@ -32,9 +32,10 @@ ta sama jedzie w zipie.
 - ⚠️ winocr i RapidOCR w jednym procesie wywalają Pythona po cichu; nie łączyć.
 - Testy bez gry: `tracker.py --replay "samples/*.png" --db data/replay.sqlite`, wpis
   `pricetrack-replay` w `.claude/launch.json`. Żywy tracker: `tracker.py`, F9 on/off, Ctrl+F9
-  koniec, podgląd http://localhost:8778/, F10 zapisuje klatkę do `data/debug/`. Gra 1920 px
-  szeroka: u mnie okno 1920×1080 przycięte do klienta 1920×1009, u znajomych też pełne 1920×1080;
-  okno sklepu i minimapa są szukane w klatce, nie stoją na stałych współrzędnych.
+  koniec, podgląd http://localhost:8778/, F10 zapisuje klatkę do `data/debug/`. Gra skaluje UI
+  z rozmiarem okna (od wysokości prostokąta 16:9 w kliencie), klatka jest normalizowana do
+  referencyjnych 1920×1009 (u mnie okno 1920×1080 przycięte paskiem zadań do klienta 1009 px),
+  a okno sklepu i minimapa są szukane w klatce, nie stoją na stałych współrzędnych.
 - Poza gitem: `.venv/`, `data/` (baza, wycinki, `config.json` z tokenem), `samples/`, `dist/`,
   `build/`, `token.txt`.
 
