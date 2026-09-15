@@ -1,8 +1,8 @@
-"""make_dist.py: paczka dla znajomych, `dist/osmsfm-tracker.zip` = exe + README.
+"""make_dist.py: the package for friends, `dist/osmsfm-tracker.zip` = exe + README.
 
-Najpierw `build_exe.py` (PyInstaller), potem to. Zip zamiast gołego exe, bo przeglądarki
-i komunikatory krzywo patrzą na pobierany .exe, a .zip przechodzi. Źródła w zipie nie ma:
-klucz do serwera i tak jest w exe, a znajomy nie ma go czytać, tylko uruchomić.
+First `build_exe.py` (PyInstaller), then this. A zip instead of a bare exe, because browsers
+and messengers frown upon a downloaded .exe, while a .zip gets through. The sources are not in
+the zip: the server key is in the exe anyway, and a friend is not meant to read it, only run it.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 def main() -> None:
     exe = HERE / "dist" / "osmsfm-tracker.exe"
     if not exe.exists():
-        raise SystemExit("brak dist/osmsfm-tracker.exe, najpierw: .venv\\Scripts\\python build_exe.py")
+        raise SystemExit("missing dist/osmsfm-tracker.exe, first run: .venv\\Scripts\\python build_exe.py")
     out = HERE / "dist" / "osmsfm-tracker.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(exe, exe.name)

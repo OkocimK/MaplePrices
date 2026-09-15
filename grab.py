@@ -1,20 +1,21 @@
-"""grab.py: zrzut okna gry na skrót klawiszowy, do folderu samples/.
+"""grab.py: screenshot of the game window on a hotkey, into the samples/ folder.
 
-Etap M0 z PLAN.md. Nie dotyka gry: szuka okna po tytule, bierze jego obszar klienta
-(bez ramki i paska tytułu) i kopiuje piksele z kompozytora Windows przez mss.
+Stage M0 from PLAN.md (design notes, kept outside the repo). Does not touch the game: finds the
+window by title, takes its client area (without the frame and title bar) and copies the pixels
+from the Windows compositor via mss.
 
-Uruchomienie (z folderu pricetrack, venv już założony):
+Running (from the pricetrack folder, venv already set up):
 
-    .venv\\Scripts\\python grab.py                # okno z "MapleStory" w tytule
-    .venv\\Scripts\\python grab.py --title Worlds  # inny fragment tytułu
-    .venv\\Scripts\\python grab.py --list          # wypisz widoczne okna i wyjdź
+    .venv\\Scripts\\python grab.py                # window with "MapleStory" in the title
+    .venv\\Scripts\\python grab.py --title Worlds  # a different title fragment
+    .venv\\Scripts\\python grab.py --list          # list visible windows and exit
 
-Skróty (działają globalnie, gra może mieć fokus):
-    F8          zapisz zrzut
-    Ctrl+F8     zakończ
+Hotkeys (global, the game may keep focus):
+    F8          save a screenshot
+    Ctrl+F8     quit
 
-Każdy zrzut wypisuje ścieżkę, rozmiar i średnią jasność. Jasność bliska zeru znaczy,
-że mss dostał czarny prostokąt i trzeba przejść na Windows Graphics Capture.
+Every screenshot prints its path, size and mean brightness. Brightness close to zero means
+that mss got a black rectangle and we have to switch to Windows Graphics Capture.
 """
 
 import argparse
@@ -35,7 +36,7 @@ QUIT_KEY = "ctrl+f8"
 
 
 def set_dpi_aware() -> None:
-    """Bez tego przy skalowaniu 125%/150% współrzędne okna są w innych pikselach niż zrzut."""
+    """Without this, at 125%/150% scaling the window coordinates are in different pixels than the screenshot."""
     user32 = ctypes.windll.user32
     try:
         # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
@@ -70,7 +71,7 @@ def find_window(fragment: str) -> int | None:
 
 
 def client_rect(hwnd: int) -> dict[str, int]:
-    """Obszar klienta okna we współrzędnych ekranu, gotowy dla mss.grab."""
+    """Client area of the window in screen coordinates, ready for mss.grab."""
     left, top, right, bottom = win32gui.GetClientRect(hwnd)
     sx, sy = win32gui.ClientToScreen(hwnd, (left, top))
     return {"left": sx, "top": sy, "width": right - left, "height": bottom - top}
@@ -78,8 +79,8 @@ def client_rect(hwnd: int) -> dict[str, int]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--title", default="MapleStory", help="fragment tytułu okna gry (domyślnie: MapleStory)")
-    ap.add_argument("--list", action="store_true", help="wypisz widoczne okna i wyjdź")
+    ap.add_argument("--title", default="MapleStory", help="fragment of the game window title (default: MapleStory)")
+    ap.add_argument("--list", action="store_true", help="list visible windows and exit")
     args = ap.parse_args()
 
     set_dpi_aware()
@@ -91,15 +92,15 @@ def main() -> int:
 
     hwnd = find_window(args.title)
     if hwnd is None:
-        print(f"Nie znalazłem widocznego okna z '{args.title}' w tytule.")
-        print("Sprawdź tytuł przez: grab.py --list  i podaj go przez --title.")
+        print(f"No visible window with '{args.title}' in the title found.")
+        print("Check the title with: grab.py --list  and pass it via --title.")
         return 1
 
     SAMPLES.mkdir(exist_ok=True)
-    print(f"Okno: {win32gui.GetWindowText(hwnd)!r}  hwnd={hwnd}")
-    print(f"Obszar klienta: {client_rect(hwnd)}")
-    print(f"Zrzuty lecą do: {SAMPLES}")
-    print(f"[{GRAB_KEY.upper()}] zrzut   [{QUIT_KEY.upper()}] koniec")
+    print(f"Window: {win32gui.GetWindowText(hwnd)!r}  hwnd={hwnd}")
+    print(f"Client area: {client_rect(hwnd)}")
+    print(f"Screenshots go to: {SAMPLES}")
+    print(f"[{GRAB_KEY.upper()}] screenshot   [{QUIT_KEY.upper()}] quit")
 
     sct = (getattr(mss, "MSS", None) or mss.mss)()
     count = 0
@@ -107,12 +108,12 @@ def main() -> int:
     def grab() -> None:
         nonlocal count
         if not win32gui.IsWindow(hwnd):
-            print("Okno gry zniknęło, kończę.")
+            print("Game window is gone, quitting.")
             keyboard.press_and_release(QUIT_KEY)
             return
-        rect = client_rect(hwnd)  # czytane za każdym razem, okno mogło się przesunąć
+        rect = client_rect(hwnd)  # read every time, the window may have moved
         if rect["width"] <= 0 or rect["height"] <= 0:
-            print("Okno zminimalizowane albo puste, pomijam.")
+            print("Window minimized or empty, skipping.")
             return
         shot = sct.grab(rect)
         count += 1
@@ -120,8 +121,8 @@ def main() -> int:
         path = SAMPLES / name
         mss.tools.to_png(shot.rgb, shot.size, output=str(path))
         mean = float(np.frombuffer(shot.rgb, dtype=np.uint8).mean())
-        warn = "   ⚠ czarny prostokąt, mss nie widzi okna" if mean < 2 else ""
-        print(f"{name}  {shot.size[0]}×{shot.size[1]}  jasność {mean:5.1f}{warn}")
+        warn = "   ⚠ black rectangle, mss does not see the window" if mean < 2 else ""
+        print(f"{name}  {shot.size[0]}×{shot.size[1]}  brightness {mean:5.1f}{warn}")
 
     keyboard.add_hotkey(GRAB_KEY, grab, suppress=False)
     try:
@@ -131,7 +132,7 @@ def main() -> int:
     finally:
         keyboard.unhook_all()
         sct.close()
-    print(f"Koniec, zapisano {count} zrzutów.")
+    print(f"Done, saved {count} screenshots.")
     return 0
 
 

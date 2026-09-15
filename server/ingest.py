@@ -1,15 +1,15 @@
-"""ingest.py: odbiornik obserwacji na hoście (osmsfm.duckdns.org), tylko biblioteka standardowa.
+"""ingest.py: observation receiver on the host (osmsfm.duckdns.org), standard library only.
 
-Nasłuchuje na 127.0.0.1:8781, nginx przekazuje tam `/api/`. Trackery znajomych wysyłają
-POST /api/ingest z nagłówkiem `Authorization: Bearer <token>` i JSON-em:
-    {"client": "nick", "rows": [{...pola z store.ROW_FIELDS..., "crop": "<png base64>"}]}
-Serwer deduplikuje (store.Store.add_rows), zapisuje wycinki do katalogu strony i po każdej
-paczce odświeża `data.json`, z którego czyta viewer. Odpowiedź: {"accepted": n, "dup": m}.
+Listens on 127.0.0.1:8781, nginx forwards `/api/` there. The friends' trackers send
+POST /api/ingest with the header `Authorization: Bearer <token>` and JSON:
+    {"client": "nick", "rows": [{...fields from store.ROW_FIELDS..., "crop": "<png base64>"}]}
+The server deduplicates (store.Store.add_rows), writes the crops into the site directory and after each
+batch refreshes `data.json`, which the viewer reads from. Response: {"accepted": n, "dup": m}.
 
-GET /api/health zwraca liczbę wierszy, do sprawdzenia, czy żyje.
+GET /api/health returns the row count, to check that it is alive.
 
-Ścieżki (zmienne środowiskowe, ustawia unit systemd):
-    OSMSFM_TOKEN_FILE  /etc/osmsfm/token        wspólny sekret, jedna linia
+Paths (environment variables, set by the systemd unit):
+    OSMSFM_TOKEN_FILE  /etc/osmsfm/token        shared secret, one line
     OSMSFM_DB          /var/lib/osmsfm/prices.sqlite
     OSMSFM_WEB         /var/www/osmsfm          index.html, data.json, crops/
 """
@@ -43,11 +43,11 @@ def export() -> None:
     tmp = WEB / "data.json.tmp"
     with export_lock:
         tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        tmp.replace(WEB / "data.json")  # podmiana atomowa, nginx nigdy nie odda pół pliku
+        tmp.replace(WEB / "data.json")  # atomic swap, nginx never serves half a file
 
 
 def clean_row(raw: dict, client: str) -> dict | None:
-    """Tylko znane pola, z twardą walidacją typów; śmieci z sieci nie mają wejść do bazy."""
+    """Only known fields, with strict type validation; junk from the network must not enter the database."""
     try:
         row = {k: raw.get(k) for k in ROW_FIELDS}
         row["client"] = client[:40]
@@ -67,7 +67,7 @@ def clean_row(raw: dict, client: str) -> dict | None:
             if row[k] is not None:
                 from datetime import datetime
 
-                datetime.fromisoformat(row[k])  # ValueError, gdy to nie data
+                datetime.fromisoformat(row[k])  # ValueError when it is not a date
         if row["ts"] is None:
             return None
         for k in ("raw_name", "equip", "stat", "owner", "shop", "map"):
@@ -81,7 +81,7 @@ def clean_row(raw: dict, client: str) -> dict | None:
 class H(BaseHTTPRequestHandler):
     server_version = "osmsfm-ingest/1"
 
-    def log_message(self, fmt, *args):  # do journala tylko błędy, sukcesy liczy odpowiedź
+    def log_message(self, fmt, *args):  # only errors go to the journal, successes are counted by the response
         pass
 
     def _json(self, obj, code=200):
@@ -140,12 +140,12 @@ class H(BaseHTTPRequestHandler):
                     pass
         if accepted:
             export()
-        print(f"{client}: {len(rows)} wierszy, {accepted} nowych", flush=True)
+        print(f"{client}: {len(rows)} rows, {accepted} new", flush=True)
         self._json({"accepted": accepted, "dup": len(rows) - accepted, "rejected": len(raws) - len(rows)})
 
 
 if __name__ == "__main__":
     if not (WEB / "data.json").exists():
         export()
-    print(f"osmsfm-ingest na {BIND[0]}:{BIND[1]}, baza {DB}, strona {WEB}", flush=True)
+    print(f"osmsfm-ingest on {BIND[0]}:{BIND[1]}, database {DB}, site {WEB}", flush=True)
     ThreadingHTTPServer(BIND, H).serve_forever()

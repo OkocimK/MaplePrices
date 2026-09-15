@@ -1,21 +1,20 @@
-"""names.py: z odczytu OCR nazwy i z ikony robi kanoniczną nazwę scrolla.
+"""names.py: builds a canonical scroll name from the OCR reading of the name and from the icon.
 
-Nie dopasowujemy całych nazw do słownika, bo słownik z osmlib (`scrolls.json`) nie pokrywa
-tego świata (są tu np. Earring for LUK, Shield for LUK, Gun, Accuracy, „Overall" bez „Armor").
-Zamiast tego nazwa scrolla ma sztywną gramatykę:
+We do not match whole names against a dictionary, because the osmlib dictionary (`scrolls.json`)
+does not cover this world (it has e.g. Earring for LUK, Shield for LUK, Gun, Accuracy, "Overall"
+without "Armor"). Instead the scroll name has a rigid grammar:
 
-    (Dark )?scroll for <część> for <stat> <procent>%
+    (Dark )?scroll for <part> for <stat> <percent>%
 
-i każdy człon dopasowuje się osobno do małego, zamkniętego słownika odległością Levenshteina.
-To znosi dwa problemy naraz:
-1. gra obcina nazwę po szerokości piksela (znika procent, czasem cały stat),
-2. OCR myli pojedyncze litery (kursor gry, ogonki, „3C(k" zamiast „30%").
+and each part is matched separately against a small, closed vocabulary by Levenshtein distance.
+That removes two problems at once:
+1. the game truncates the name by pixel width (the percent disappears, sometimes the whole stat),
+2. OCR confuses single letters (the game cursor, diacritics, "3C(k" instead of "30%").
 
-Procent bierze się z tekstu, a gdy go brak albo jest nieczytelny, z ikony (`icons.py`:
-10% złoty, 30% fioletowy, 60% czerwono-pomarańczowy, 70% szarobrązowy, 100% stalowy;
-wykupione wiersze mają osobne, wyblakłe wzorce). Gdy stat jest obcięty w całości, wynik
-jest niejednoznaczny i taki zostaje: lepiej „Dark scroll for Overall Armor for ? 30%"
-niż zgadywanie.
+The percent is taken from the text, and when it is missing or unreadable, from the icon
+(`icons.py`: 10% golden, 30% purple, 60% red-orange, 70% grey-brown, 100% steel; sold-out rows
+have separate, faded templates). When the stat is truncated entirely, the result is ambiguous
+and stays that way: better "Dark scroll for Overall Armor for ? 30%" than guessing.
 """
 
 from __future__ import annotations
@@ -41,12 +40,12 @@ PCTS = [10, 30, 60, 70, 100]
 _ICONS: "icons.Icons | None" = None
 
 
-DARK_PCTS = {30, 70}  # dark scroll to zawsze 30% albo 70% (potwierdzone przez użytkownika)
+DARK_PCTS = {30, 70}  # a dark scroll is always 30% or 70% (confirmed by the user)
 
 
 def pct_from_icon(icon: Image.Image, sold: bool = False, dark: bool = False) -> int | None:
-    """Procent z ikony przez `icons.Icons` (wzorce chromy, osobno aktywne i wyblakłe).
-    Dla ciemnego scrolla ikona spoza 30/70 to ikona jeszcze nie doładowana, wynik None."""
+    """Percent from the icon via `icons.Icons` (chroma templates, active and faded separately).
+    For a dark scroll an icon outside 30/70 is an icon not yet loaded, result None."""
     global _ICONS
     if _ICONS is None:
         import icons
@@ -60,9 +59,9 @@ PCT_MAX_DIST = 45.0
 class Scroll:
     dark: bool
     equip: str
-    stat: str | None  # None = obcięty, nie do ustalenia z tej klatki
+    stat: str | None  # None = truncated, cannot be determined from this frame
     pct: int | None
-    score: float  # 0..1, jakość dopasowania członów
+    score: float  # 0..1, quality of the part matches
     raw: str
 
     @property
@@ -94,7 +93,7 @@ def lev(a: str, b: str) -> int:
 
 
 def _best(q: str, vocab: list[str], prefix: bool) -> tuple[str | None, float]:
-    """Najlepszy wpis słownika dla q. prefix=True: q może być obciętym początkiem wpisu."""
+    """Best vocabulary entry for q. prefix=True: q may be a truncated beginning of an entry."""
     q = q.strip()
     if not q:
         return None, 0.0
@@ -104,7 +103,7 @@ def _best(q: str, vocab: list[str], prefix: bool) -> tuple[str | None, float]:
         target = n[: len(q)] if prefix and len(n) > len(q) else n
         d = lev(q, target)
         s = 1.0 - d / max(len(q), len(target))
-        # przy prefiksie wolimy dłuższy wpis tylko jeśli q go naprawdę zaczyna
+        # with a prefix we prefer a longer entry only if q really starts it
         if s > score:
             best, score = v, s
     return best, score
@@ -115,12 +114,12 @@ _PCT = re.compile(r"(\d{2,3})\s*[%/(]?\s*\w{0,2}$")
 
 
 def parse(raw: str, icon: Image.Image | None = None, sold: bool = False) -> Scroll | None:
-    """None, gdy tekst nie wygląda na scroll. Inaczej Scroll, być może niekompletny.
-    `icon` rozstrzyga procent, gdy tekst go nie ma; `sold` wybiera wzorce wyblakłych ikon."""
+    """None when the text does not look like a scroll. Otherwise a Scroll, possibly incomplete.
+    `icon` settles the percent when the text lacks it; `sold` selects the faded icon templates."""
     q = _norm(raw)
     m = _HEAD.match(q)
     if not m:
-        # OCR mógł zgubić początek („croll for", „scrolI for"); wymagamy „for" w środku
+        # OCR may have lost the beginning ("croll for", "scrolI for"); we require "for" inside
         if " for " not in q or lev(q[:10], "scroll for") > 3:
             return None
         dark = q.startswith("d")
@@ -129,7 +128,7 @@ def parse(raw: str, icon: Image.Image | None = None, sold: bool = False) -> Scro
         dark = bool(m.group(1))
         rest = m.group(2)
 
-    # rest = "<equip> for <stat> <pct>%"  albo obcięte w dowolnym miejscu
+    # rest = "<equip> for <stat> <pct>%"  or truncated at any point
     parts = re.split(r"\s+for(?:\s+|$)", rest, maxsplit=1)
     if len(parts) == 2:
         eq_txt, tail = parts
@@ -141,34 +140,34 @@ def parse(raw: str, icon: Image.Image | None = None, sold: bool = False) -> Scro
     if equip is None or eq_score < 0.6:
         if eq_truncated or not eq_txt.strip():
             return None
-        # część nieznana, ale gramatyka się zgadza („Scroll for Sword for"): zostaje surowa,
-        # niska ocena zrobi z tego wpis do ręcznego przejrzenia
+        # unknown part, but the grammar matches ("Scroll for Sword for"): it stays raw,
+        # the low score turns it into an entry for manual review
         equip, eq_score = eq_txt.strip().title(), 0.3
 
     pct: int | None = None
     stat: str | None = None
     st_score = 1.0
     tokens = tail.split()
-    # procent: ostatni token zaczynający się cyfrą („60%", „3C(k", „6001", „100/")
+    # percent: the last token starting with a digit ("60%", "3C(k", "6001", "100/")
     if tokens and tokens[-1][0].isdigit():
         tok = tokens.pop()
         digits = re.match(r"\d+", tok).group(0)
         pct = int(digits) if int(digits) in PCTS else None
         if pct is None and len(digits) == 1:
-            pass  # obcięte do jednej cyfry („INT 1" to 10% albo 100%), niech rozstrzygnie ikona
+            pass  # truncated to one digit ("INT 1" is 10% or 100%), let the icon settle it
         elif pct is None:
-            # OCR podmienił cyfrę na literę („3C") albo dokleił śmieci („6001")
+            # OCR swapped a digit for a letter ("3C") or appended junk ("6001")
             cand = [p for p in PCTS if str(p)[0] == digits[0]]
             if len(cand) == 1 or (cand and len(tok) <= 3):
                 pct = cand[0] if len(cand) == 1 else next((p for p in cand if len(str(p)) == 2), None)
-    # stat: najdłuższy początek pozostałych tokenów, który pasuje do słownika; bez procentu
-    # w tekście stat może być obcięty („DEX 6" -> „DEX", „Ac" -> „Accuracy")
+    # stat: the longest beginning of the remaining tokens that matches the vocabulary; without a
+    # percent in the text the stat may be truncated ("DEX 6" -> "DEX", "Ac" -> "Accuracy")
     if tokens:
         st_truncated = pct is None
         best_stat, best_score = None, 0.0
         for n in range(len(tokens), 0, -1):
             cand, sc = _best(" ".join(tokens[:n]), STATS, prefix=st_truncated)
-            sc -= 0.05 * (len(tokens) - n)  # kara za odrzucone śmieci
+            sc -= 0.05 * (len(tokens) - n)  # penalty for discarded junk
             if sc > best_score:
                 best_stat, best_score = cand, sc
         if best_score >= 0.6:
@@ -177,7 +176,7 @@ def parse(raw: str, icon: Image.Image | None = None, sold: bool = False) -> Scro
             stat, st_score = None, 0.0
 
     if dark and pct is not None and pct not in DARK_PCTS:
-        pct = None  # OCR przekręcił cyfrę; dark scroll to 30/70
+        pct = None  # OCR garbled the digit; a dark scroll is 30/70
     if pct is None and icon is not None:
         pct = pct_from_icon(icon, sold, dark)
     return Scroll(dark, equip, stat, pct, min(eq_score, st_score), raw)

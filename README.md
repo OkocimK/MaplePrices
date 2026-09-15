@@ -8,8 +8,8 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 
 - Want to contribute prices? Download the tracker from the page (one exe) and read
   [README-znajomi.md](README-znajomi.md) (user guide).
-- Want to hack on it? Read [PLAN.md](PLAN.md) (in Polish): design decisions, what was measured
-  on real screenshots, what is still open.
+- Want to hack on it? The module docstrings describe what was measured on real screenshots
+  and why each threshold is what it is; start with `shopframe.py` and `recognize.py`.
 
 ## Layout
 

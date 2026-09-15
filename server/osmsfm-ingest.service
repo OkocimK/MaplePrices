@@ -1,7 +1,7 @@
-# Odbiornik obserwacji dla https://osmsfm.duckdns.org/ (pricetrack/server/ingest.py).
-# Instaluje go pricetrack/publish.py do /etc/systemd/system/. Jeden proces Pythona
-# z biblioteki standardowej, ok. 20 MB RSS, nasluchuje tylko na 127.0.0.1:8781;
-# z zewnatrz wchodzi sie przez nginx (location /api/ w deploy/osmsfm.nginx.conf).
+# Observation receiver for https://osmsfm.duckdns.org/ (server/ingest.py).
+# Installed by publish.py into /etc/systemd/system/. One Python process
+# from the standard library, about 20 MB RSS, listens only on 127.0.0.1:8781;
+# from outside it is reached through nginx (location /api/ in server/osmsfm.nginx.conf).
 
 [Unit]
 Description=osmsfm price ingest (pricetrack)

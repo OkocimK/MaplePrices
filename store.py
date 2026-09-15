@@ -1,12 +1,13 @@
-"""store.py: baza obserwacji (SQLite) i zestawienie per przedmiot.
+"""store.py: observation database (SQLite) and the per-item summary.
 
-Wspólne dla trackera (klient, Windows) i odbiornika na serwerze (`server/ingest.py`),
-dlatego **tylko biblioteka standardowa**: żadnego Pillow, numpy ani winocr. Wycinki wierszy
-(PNG) zapisuje ten, kto ma obraz: tracker przy `add`, serwer przy `add_rows`.
+Shared by the tracker (client, Windows) and the receiver on the server (`server/ingest.py`),
+hence **standard library only**: no Pillow, numpy or winocr. Row crops (PNG) are written by
+whoever has the image: the tracker in `add`, the server in `add_rows`.
 
-Schemat: jedna tabela `obs`, wiersz = jedna zaobserwowana oferta. `expires` to czas zniknięcia
-sklepu z licznika, `client` to nick zbierającego (nadaje serwer z tokenu... nie, z payloadu,
-token jest wspólny; nick służy do atrybucji i do wycięcia śmieci od jednego klienta).
+Schema: one table `obs`, row = one observed offer. `expires` is the time the shop disappears
+according to its timer, `client` is the collector's nickname (assigned by the server from the
+token... no, from the payload, the token is shared; the nickname serves attribution and cutting
+out junk from one client).
 """
 
 from __future__ import annotations
@@ -18,13 +19,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
-    from paths import DATA_DIR as DATA  # klient: obok exe albo źródeł
-except ImportError:  # serwer ma tylko store.py i ingest.py, ścieżki dostaje z env
+    from paths import DATA_DIR as DATA  # client: next to the exe or the sources
+except ImportError:  # the server only has store.py and ingest.py, it gets the paths from env
     DATA = Path(__file__).resolve().parent / "data"
 
-DB = DATA / "prices.sqlite"  # wycinki lądują obok, w data/prices_crops/
+DB = DATA / "prices.sqlite"  # crops land next to it, in data/prices_crops/
 DEDUP_MINUTES = 10
-DEFAULT_TTL_H = 24  # gdy licznik sklepu był nieczytelny: tyle godzin oferta liczy się jako aktualna
+DEFAULT_TTL_H = 24  # when the shop timer was unreadable: the offer counts as current for this many hours
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS obs (
@@ -58,7 +59,7 @@ class Store:
     def __init__(self, path: Path = DB, crops: Path | None = None):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        # wycinki obok bazy, id nie mieszają się między bazami; serwer podaje własny katalog
+        # crops next to the database, ids do not mix between databases; the server passes its own directory
         self.path = path
         self.crops = crops if crops is not None else path.with_name(path.stem + "_crops")
         self.crops.mkdir(parents=True, exist_ok=True)
@@ -67,14 +68,14 @@ class Store:
         self.db.executescript(SCHEMA)
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(obs)")}
         for col, typ in (("expires", "TEXT"), ("client", "TEXT")):
-            if col not in cols:  # baza sprzed wprowadzenia kolumny
+            if col not in cols:  # database from before the column was introduced
                 self.db.execute(f"ALTER TABLE obs ADD COLUMN {col} {typ}")
         self.db.commit()
 
-    # --- zapis po stronie klienta (z recognize.Result) ---
+    # --- client-side write (from recognize.Result) ---
 
     def add(self, r, now: datetime, client: str | None = None) -> list[int]:
-        """`r` to recognize.Result: obserwacje z jednej klatki, wspólny właściciel i licznik."""
+        """`r` is a recognize.Result: observations from one frame, common owner and timer."""
         expires = _iso(now + timedelta(minutes=r.ttl_min)) if r.ttl_min is not None else None
         rows = []
         for o in r.obs:
@@ -93,12 +94,12 @@ class Store:
                 new.append(oid)
         return new
 
-    # --- zapis wierszy słownikowych (serwer, import) ---
+    # --- writing dict rows (server, import) ---
 
     def add_rows(self, rows: list[dict]) -> list[int | None]:
-        """Wstawia wiersze; zwraca id dla każdego albo None, gdy to duplikat. Duplikat = ta sama
-        (właściciel, nazwa, cena, wykupiony) w oknie ±DEDUP_MINUTES wokół `ts` wiersza, więc
-        ta sama oferta widziana przez dwóch zbierających w tym samym czasie wchodzi raz."""
+        """Inserts rows; returns an id for each one, or None when it is a duplicate. Duplicate = the same
+        (owner, name, price, sold) within a ±DEDUP_MINUTES window around the row's `ts`, so the
+        same offer seen by two collectors at the same time enters once."""
         out: list[int | None] = []
         with self.lock:
             for row in rows:
@@ -120,7 +121,7 @@ class Store:
         return out
 
     def rows_after(self, last_id: int, limit: int = 200) -> list[dict]:
-        """Wiersze do wysłania na serwer, w kolejności id."""
+        """Rows to upload to the server, in id order."""
         with self.lock:
             cur = self.db.execute(
                 f"SELECT id,{','.join(ROW_FIELDS)} FROM obs WHERE id>? ORDER BY id LIMIT ?", (last_id, limit)
@@ -135,7 +136,7 @@ class Store:
         if p.exists():
             p.unlink()
 
-    # --- zestawienie ---
+    # --- summary ---
 
     @staticmethod
     def _expiry(ts: str, expires: str | None) -> str:
@@ -144,8 +145,8 @@ class Store:
         return _iso(datetime.fromisoformat(ts) + timedelta(hours=DEFAULT_TTL_H))
 
     def items(self) -> list[dict]:
-        """Zestawienie per przedmiot. „Aktualne" to aktywne oferty, których sklep jeszcze stoi
-        (licznik ze sklepu) i których nie widziano później jako wykupione."""
+        """Summary per item. "Current" means active offers whose shop is still up
+        (per the shop timer) and which were not seen as sold later."""
         now = datetime.now()
         now_s = _iso(now)
         d7 = _iso(now - timedelta(days=7))
@@ -153,7 +154,7 @@ class Store:
             rows = self.db.execute(
                 "SELECT name, scroll, complete, ts, price, sold, owner, expires FROM obs ORDER BY name, ts"
             ).fetchall()
-        # ostatni znany stan każdej oferty (właściciel, nazwa, cena): wykupiona czy nie
+        # last known state of each offer (owner, name, price): sold or not
         last_state: dict[tuple, tuple[str, int]] = {}
         for name, scroll, complete, ts, price, sold, owner, expires in rows:
             last_state[(owner, name, price)] = (ts, int(sold))
@@ -204,7 +205,7 @@ class Store:
         return out
 
     def export(self) -> dict:
-        """Wszystko, czego potrzebuje viewer.html w trybie statycznym (data.json)."""
+        """Everything viewer.html needs in static mode (data.json)."""
         items = self.items()
         return {
             "generated": _iso(datetime.now()),

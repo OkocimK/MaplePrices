@@ -1,16 +1,17 @@
-"""icons.py: procent scrolla z ikony przez dopasowanie wzorca, także dla wyblakłych (wykupionych).
+"""icons.py: scroll percent from the icon by template matching, also for faded (sold-out) ones.
 
-Średni kolor nasyconych pikseli (wcześniejsze `names.pct_from_icon`) wystarczał dla aktywnych
-złotych i czerwonych ikon, ale fioletowe (30%) i brązowe (70%) mają mało nasyconych pikseli,
-a wykupione wiersze są wyblakłe i kolor się zlewa. Grafika ikony jest jednak identyczna dla
-każdego procentu, więc korelacja map chromy (R-G, G-B) z wzorcem rozdziela klasy pewnie.
-Korelacja samej jasności nie działa (marginesy 0,02), bo kształt jest wspólny.
+The mean colour of saturated pixels (the earlier `names.pct_from_icon`) was enough for active
+golden and red icons, but the purple (30%) and brown (70%) ones have few saturated pixels,
+and sold-out rows are faded, so the colour blurs together. The icon artwork is however identical
+for every percent, so correlating chroma maps (R-G, G-B) with a template separates the classes
+reliably. Correlating brightness alone does not work (margins of 0.02), because the shape is shared.
 
-Wzorce (`icon_templates.json`) buduje się z żywej bazy: wiersze, w których procent stoi
-w tekście, dają etykietę, a ikona z wycinka daje obraz. Osobno aktywne i wykupione.
+The templates (`icon_templates.json`) are built from the live database: rows where the percent
+is present in the text give the label, and the icon from the crop gives the image. Active and
+sold-out separately.
 
-    .venv\\Scripts\\python icons.py build data/prices.sqlite   # zbuduj wzorce
-    .venv\\Scripts\\python icons.py test  data/prices.sqlite   # leave-one-out na tych samych danych
+    .venv\\Scripts\\python icons.py build data/prices.sqlite   # build the templates
+    .venv\\Scripts\\python icons.py test  data/prices.sqlite   # leave-one-out on the same data
 """
 
 from __future__ import annotations
@@ -26,17 +27,18 @@ from PIL import Image
 from paths import RES_DIR
 
 TEMPLATE_FILE = RES_DIR / "icon_templates.json"
-ICON_IN_CROP = (0, 4, 70, 72)  # ikona wewnątrz wycinka wiersza zapisanego przez tracker
-SIZE = (35, 34)  # wzorzec w połowie rozdzielczości, wystarcza i mniej waży
+ICON_IN_CROP = (0, 4, 70, 72)  # the icon inside the row crop saved by the tracker
+SIZE = (35, 34)  # template at half resolution, enough and weighs less
 MIN_SCORE = 0.80
-MIN_MARGIN = 0.05  # drugi najlepszy musi być wyraźnie gorszy, inaczej „nie wiem"
-# Na 274 wierszach z procentem w tekście (leave-one-out): 252 dobrze, 4 „nie wiem", 18 niezgodnych
-# z pewnością 0,99, czyli to etykiety były złe (ikona z innego wiersza, patrz PLAN.md).
+MIN_MARGIN = 0.05  # the second best must be clearly worse, otherwise "don't know"
+# On 274 rows with the percent in the text (leave-one-out): 252 correct, 4 "don't know", 18 mismatched
+# with confidence 0.99, i.e. the labels were wrong (icon from another row, see PLAN.md, design
+# notes kept outside the repo).
 
 
 def _vec(icon: Image.Image) -> np.ndarray:
-    """Cechy chromatyczne (R-G, G-B) zamiast jasności: kształt ikony jest ten sam dla każdego
-    procentu, różni się tylko barwa, a wyblaknięcie skaluje chromę liniowo, co korelacja znosi."""
+    """Chroma features (R-G, G-B) instead of brightness: the icon shape is the same for every
+    percent, only the hue differs, and fading scales the chroma linearly, which correlation cancels."""
     a = np.asarray(icon.convert("RGB").resize(SIZE, Image.BILINEAR), dtype=float)
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
     v = np.concatenate([(r - g).ravel(), (g - b).ravel()])
@@ -52,10 +54,10 @@ class Icons:
         self.vecs = np.array(d["vecs"], dtype=float)
 
     def pct(self, icon: Image.Image, sold: bool, allowed: set[int] | None = None) -> int | None:
-        """`allowed` to zbiór procentów dopuszczalnych dla tej nazwy (dark scroll: {30, 70}).
-        Gdy najlepsza klasa jest spoza zbioru, ikona jest niespójna z tekstem (jeszcze nie
-        doładowana po otwarciu sklepu), więc odpowiedź brzmi „nie wiem", a nie „najlepsza
-        z dozwolonych"."""
+        """`allowed` is the set of percents admissible for this name (dark scroll: {30, 70}).
+        When the best class is outside the set, the icon is inconsistent with the text (not yet
+        loaded after opening the shop), so the answer is "don't know", not "the best of the
+        allowed ones"."""
         v = _vec(icon)
         scores = self.vecs @ v
         idx = [i for i, (s, _) in enumerate(self.labels) if s == int(sold)]
@@ -65,7 +67,7 @@ class Icons:
         best = order[0]
         if scores[best] < MIN_SCORE:
             return None
-        # margines liczony do najlepszego wzorca INNEJ klasy
+        # margin measured against the best template of ANOTHER class
         other = next((i for i in order[1:] if self.labels[i][1] != self.labels[best][1]), None)
         if other is not None and scores[best] - scores[other] < MIN_MARGIN:
             return None
@@ -89,8 +91,8 @@ def _samples(db_path: Path) -> list[tuple[int, int, int, Image.Image]]:
 
 
 def build(db_path: Path) -> None:
-    """Dwa przebiegi: po pierwszym wyrzuca próbki, które słabo pasują do własnej klasy
-    (ikona jeszcze nie doładowana, więc z innego wiersza), i liczy wzorce jeszcze raz."""
+    """Two passes: after the first it drops the samples that match their own class poorly
+    (icon not yet loaded, so from another row), and computes the templates once more."""
     acc: dict[tuple[int, int], list[np.ndarray]] = {}
     for _, pct, sold, icon in _samples(db_path):
         acc.setdefault((sold, pct), []).append(_vec(icon))
@@ -105,8 +107,8 @@ def build(db_path: Path) -> None:
         m = m / np.linalg.norm(m)
         labels.append(list(k))
         vecs.append(m.tolist())
-        print(f"sold={k[0]} pct={k[1]:3}: {len(keep)} próbek (odrzucone {len(acc[k]) - len(keep)})")
-    print(f"odrzucone łącznie: {dropped} (ikony niezgodne z tekstem)")
+        print(f"sold={k[0]} pct={k[1]:3}: {len(keep)} samples (dropped {len(acc[k]) - len(keep)})")
+    print(f"dropped in total: {dropped} (icons inconsistent with the text)")
     TEMPLATE_FILE.write_text(json.dumps({"labels": labels, "vecs": vecs}), encoding="utf-8")
 
 
@@ -122,7 +124,7 @@ def test(db_path: Path) -> None:
         for k, vs in by_class.items():
             if k[0] != sold:
                 continue
-            # leave-one-out: własny wektor wyłączony ze średniej klasy
+            # leave-one-out: the own vector is excluded from the class mean
             others = [u for u in vs if u is not v and not np.array_equal(u, v)] if k[1] == pct else vs
             if not others:
                 continue
@@ -141,8 +143,8 @@ def test(db_path: Path) -> None:
             ok += 1
         else:
             bad += 1
-            print(f"  ZLE id={oid} sold={sold} pct={pct} -> {best} s={best_s:.3f} margin={best_s - second_s:.3f}")
-    print(f"dobrze {ok}, źle {bad}, nie wiem {unk}, razem {len(samples)}")
+            print(f"  BAD id={oid} sold={sold} pct={pct} -> {best} s={best_s:.3f} margin={best_s - second_s:.3f}")
+    print(f"correct {ok}, wrong {bad}, don't know {unk}, total {len(samples)}")
 
 
 if __name__ == "__main__":

@@ -1,31 +1,31 @@
-"""tracker.py: pętla na żywo. Zrzut okna gry, rozpoznanie, zapis do SQLite, podgląd w przeglądarce.
+"""tracker.py: the live loop. Grab the game window, recognise, store in SQLite, preview in the browser.
 
-    .venv\\Scripts\\python tracker.py                 # start, przeglądarka: http://localhost:8778/
-    .venv\\Scripts\\python tracker.py --replay "samples/*.png"   # test offline na zapisanych klatkach
+    .venv\\Scripts\\python tracker.py                 # start, browser: http://localhost:8778/
+    .venv\\Scripts\\python tracker.py --replay "samples/*.png"   # offline test on saved frames
 
-Skróty (globalne):
-    F9        włącz/wyłącz zbieranie (wyłączone = zero zrzutów)
-    F10       zapisz klatkę do data/debug/snap-*.png (diagnostyka: co widzi tracker u znajomego)
-    Ctrl+F9   zakończ
+Hotkeys (global):
+    F9        collecting on/off (off = no screenshots at all)
+    F10       save a frame to data/debug/snap-*.png (diagnostics: what the tracker sees on a friend's PC)
+    Ctrl+F9   quit
 
-Co robi w pętli (co ~500 ms, tylko gdy włączone):
-1. zrzut obszaru klienta okna gry (mss), pozycja kursora z systemu (win32api),
-2. `recognize.recognize` -> obserwacje; klatka jest skalowana do referencyjnej skali UI (gra
-   skaluje UI z rozmiarem okna), okno sklepu jest szukane w klatce (okna UI można przesuwać),
-   minimapa też, a bez niej oferta idzie bez mapy i kanału; wiersze pod kursorem i z niepewną
-   ceną odpadają,
-3. deduplikacja: ta sama (właściciel, nazwa, cena, wykupiony) w ciągu 10 minut = ta sama
-   oferta, nie dopisujemy; po dłuższym czasie to nowa obserwacja,
-4. zapis do `data/prices.sqlite`, wycinek wiersza do `data/crops/<id>.png` (do audytu).
+What the loop does (every ~500 ms, only while on):
+1. grab the client area of the game window (mss), cursor position from the system (win32api),
+2. `recognize.recognize` -> observations; the frame is scaled to the reference UI scale (the game
+   scales the UI with the window size), the shop window is searched for in the frame (UI windows
+   can be moved), the minimap too, and without it the offer goes in without map and channel; rows
+   under the cursor and rows with an uncertain price are dropped,
+3. deduplication: the same (owner, name, price, sold) within 10 minutes = the same offer, not
+   appended; after a longer time it is a new observation,
+4. write to `data/prices.sqlite`, the row crop to `data/crops/<id>.png` (for auditing).
 
-HTTP na :8778 serwuje `viewer.html` i proste JSON API:
-    GET  /api/state            stan (on/off, liczniki, ostatnie zdarzenia)
-    GET  /api/items            zestawienie per przedmiot
-    GET  /api/obs?name=...     obserwacje jednego przedmiotu
-    POST /api/toggle           przełącz on/off
-    POST /api/sync             wyślij teraz na serwer
-    POST /api/delete?id=N      usuń błędną obserwację
-    GET  /crops/N.png          wycinek
+HTTP on :8778 serves `viewer.html` and a simple JSON API:
+    GET  /api/state            state (on/off, counters, recent events)
+    GET  /api/items            summary per item
+    GET  /api/obs?name=...     observations of one item
+    POST /api/toggle           toggle on/off
+    POST /api/sync             upload to the server now
+    POST /api/delete?id=N      delete a wrong observation
+    GET  /crops/N.png          crop
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from PIL import Image
 import recognize
 from store import DATA, DB, Store
 
-from paths import RES_DIR as HERE  # viewer.html leży w zasobach, także w exe
+from paths import RES_DIR as HERE  # viewer.html lives in the resources, also inside the exe
 PORT = 8778
 TOGGLE_KEY = "f9"
 SNAP_KEY = "f10"
@@ -62,25 +62,25 @@ class State:
         self.frames = 0
         self.shops = 0
         self.added = 0
-        self.stale = 0  # klatki z ikonami jeszcze z poprzedniego stanu listy
+        self.stale = 0  # frames whose icons are still from the previous list state
         self.log: list[str] = []
         self.lock = threading.Lock()
         self.last_owner: str | None = None
-        self.client: str | None = None  # nick zbierającego, podpis wierszy
-        self.minimap_state: str | None = "?"  # żeby o schowanej minimapie powiedzieć raz, nie przy każdym sklepie
-        self.debug_saved = 0  # wycinków diagnostycznych na sesję najwyżej DEBUG_MAX
-        self.origins: set[tuple[int, int]] = set()  # przesunięcia okna sklepu już zgłoszone w logu
-        # Wysyłka na serwer (sync.py) chodzi w tle: co SYNC_MIN podczas zbierania,
-        # gdy przybyły nowe oferty, i zaraz po wyłączeniu zbierania. Naraz najwyżej jedna.
-        self.published_added = 0  # ile ofert było w bazie przy ostatniej udanej publikacji
+        self.client: str | None = None  # collector's id, signature of the rows
+        self.minimap_state: str | None = "?"  # so a hidden minimap is reported once, not at every shop
+        self.debug_saved = 0  # at most DEBUG_MAX diagnostic crops per session
+        self.origins: set[tuple[int, int]] = set()  # shop window offsets already reported in the log
+        # Upload to the server (sync.py) runs in the background: every SYNC_MIN while collecting,
+        # when new offers have arrived, and right after collecting is switched off. At most one at a time.
+        self.published_added = 0  # how many offers the database had at the last successful upload
         self.publish_at: str | None = None
         self.publishing = False
         self.publish_error: str | None = None
-        # Potwierdzanie: oferta wchodzi do bazy dopiero, gdy ta sama (właściciel, nazwa, cena,
-        # wykupiony) pokaże się w dwóch kolejnych rozpoznanych klatkach albo klatka nie zmieni
-        # się przez jeden okres. Powód: gra po otwarciu sklepu i po przewinięciu przez chwilę
-        # pokazuje nowe napisy ze starymi ikonami (procent z ikony byłby zły), a klatka
-        # potrafi być rozdarta w trakcie przerysowania.
+        # Confirmation: an offer enters the database only once the same (owner, name, price,
+        # sold) shows up in two consecutive recognised frames, or the frame stays unchanged
+        # for one period. Reason: after opening a shop and after scrolling, the game briefly
+        # shows the new text with the old icons (the percent taken from the icon would be wrong),
+        # and a frame can be torn in the middle of a redraw.
         self.pending: dict[tuple, recognize.Obs] = {}
         self.pending_result: recognize.Result | None = None
 
@@ -101,7 +101,7 @@ class State:
 
 def make_handler(store: Store, state: State, on_toggle, on_sync=lambda: False):
     class H(BaseHTTPRequestHandler):
-        def log_message(self, *_: object) -> None:  # cisza w konsoli
+        def log_message(self, *_: object) -> None:  # keep the console quiet
             pass
 
         def _json(self, obj: object, code: int = 200) -> None:
@@ -205,9 +205,9 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
                 state.note("minimap shows no map name (shrunk with the \"-\" button?): offers are stored without map and channel")
         readable = r.minimap in ("open", "collapsed")
         if ((readable and r.channel is None) or r.ttl_min is None) and state.debug_saved < DEBUG_MAX:
-            # nieczytelna minimapa albo licznik: odłóż wycinki do obejrzenia, ale nie bez końca
+            # unreadable minimap or timer: set crops aside for a look, but not endlessly
             state.debug_saved += 1
-            frame, _ = recognize.normalize(frame)  # wycinki w tej samej skali co rozpoznanie
+            frame, _ = recognize.normalize(frame)  # crops at the same scale as the recognition
             dbg = DATA / "debug"
             dbg.mkdir(parents=True, exist_ok=True)
             stamp = now.strftime("%H%M%S")
@@ -231,7 +231,7 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
 
 
 def process_same(store: Store, state: State, now: datetime) -> None:
-    """Klatka identyczna z poprzednią: to, co czekało, jest potwierdzone samym trwaniem."""
+    """Frame identical to the previous one: whatever was pending is confirmed by persisting alone."""
     if state.pending and state.pending_result is not None:
         commit(state.pending_result, list(state.pending.values()), store, state, now)
         state.pending.clear()
@@ -242,17 +242,17 @@ def replay(pattern: str, store: Store, state: State) -> None:
     state.note(f"replay of {len(files)} frames")
     t = datetime.now()
     for f in files:
-        process(Image.open(f), None, store, state, t, confirm=False)  # próbki to pojedyncze klatki
+        process(Image.open(f), None, store, state, t, confirm=False)  # samples are single frames
         t += timedelta(seconds=1)
     state.note(f"replay done: {state.shops} shops, {state.added} observations")
 
 
-SYNC_MIN = 5  # co tyle minut wysyłka w tle podczas zbierania, jeśli coś przybyło
+SYNC_MIN = 5  # background upload every this many minutes while collecting, if anything arrived
 
 
 class Uploader:
-    """Wysyłka na serwer (sync.push) w osobnym wątku, żeby sieć nie zatrzymywała pętli zrzutów.
-    Naraz najwyżej jedna; nieudana próba nic nie psuje, wiersze czekają w lokalnej bazie."""
+    """Upload to the server (sync.push) in a separate thread, so the network does not stall the capture loop.
+    At most one at a time; a failed attempt breaks nothing, the rows wait in the local database."""
 
     def __init__(self, store: Store, state: State, cfg: dict) -> None:
         self.store = store
@@ -293,7 +293,7 @@ class Uploader:
             s.published_added = target
             s.publish_at = datetime.now().isoformat(timespec="seconds")
             s.publish_error = None
-        except Exception as e:  # brak sieci, zły token: zapis lokalny jest bezpieczny, spróbujemy później
+        except Exception as e:  # no network, bad token: the local copy is safe, we will retry later
             s.publish_error = str(e).splitlines()[0]
             s.note(f"upload failed: {s.publish_error}")
         finally:
@@ -305,7 +305,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
          auto_sync: bool = True) -> None:
     import sync
 
-    cfg = sync.load_config() if auto_sync else None  # bez pytań: serwer i token wpisane na sztywno
+    cfg = sync.load_config() if auto_sync else None  # no questions asked: server and token are hard-coded
     client = cfg["client"] if cfg else None
     state.client = client
     import keyboard
@@ -320,7 +320,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
     if hwnd is None:
         print(f"Game window not found (title containing '{title}'). Run the game in a window and try again.")
         if getattr(sys, "frozen", False):
-            input("Press Enter to close.")  # exe z dwukliku: okno konsoli zniknęłoby zanim ktoś przeczyta
+            input("Press Enter to close.")  # exe run by double-click: the console window would vanish before anyone reads it
         sys.exit(1)
     state.note(f"game window: {win32gui.GetWindowText(hwnd)!r}")
     rect = grab.client_rect(hwnd)
@@ -342,13 +342,13 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
             pub.start("after collecting stopped")
 
     def snap() -> None:
-        """Klatka do diagnostyki: co dokładnie widzi tracker (inna rozdzielczość, przesunięte okna)."""
+        """Diagnostic frame: what exactly the tracker sees (different resolution, moved windows)."""
         if not win32gui.IsWindow(hwnd):
             return
         r = grab.client_rect(hwnd)
         if r["width"] <= 0 or r["height"] <= 0:
             return
-        with MSS() as s:  # własna instancja: skrót działa w wątku keyboard, a mss nie jest wspólne między wątkami
+        with MSS() as s:  # own instance: the hotkey runs in the keyboard thread, and mss is not shared between threads
             shot = s.grab(r)
         dbg = DATA / "debug"
         dbg.mkdir(parents=True, exist_ok=True)
@@ -389,7 +389,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
                     process(frame, cursor, store, state, datetime.now())
                 else:
                     process_same(store, state, datetime.now())
-            except Exception as e:  # jedna zła klatka nie ma zabijać pętli
+            except Exception as e:  # one bad frame must not kill the loop
                 state.note(f"frame error: {type(e).__name__}: {e}")
             if auto_sync and pub.due(time.time()):
                 pub.start(f"every {SYNC_MIN} min")
@@ -399,7 +399,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
         sct.close()
         if auto_sync and state.added != state.published_added:
             pub.start("at exit")
-        pub.wait(600)  # ostatnia publikacja ma dojść, zanim proces zniknie
+        pub.wait(600)  # the last upload should get through before the process disappears
         srv.shutdown()
     state.note(f"done: {state.frames} frames recognised, {state.shops} shops, {state.added} new offers")
 

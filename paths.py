@@ -1,10 +1,10 @@
-"""paths.py: gdzie leżą zasoby i dane, tak samo ze źródeł i z jednego pliku exe (PyInstaller).
+"""paths.py: where resources and data live, the same way from sources and from a single exe file (PyInstaller).
 
-- RES_DIR: pliki dołączone do programu, tylko do odczytu (wzorce glifów i ikon, viewer.html).
-  Ze źródeł to katalog pricetrack/, w exe to tymczasowy katalog rozpakowania (sys._MEIPASS),
-  który znika po wyjściu, więc NIC tam nie zapisywać.
-- APP_DIR: katalog obok programu, na dane użytkownika (`data/` z bazą, configiem, wycinkami).
-  Ze źródeł to też pricetrack/, w exe katalog, w którym leży plik exe.
+- RES_DIR: files bundled with the program, read-only (glyph and icon templates, viewer.html).
+  From sources it is the repository root, in the exe it is the temporary extraction
+  directory (sys._MEIPASS), which disappears on exit, so NEVER write anything there.
+- APP_DIR: the directory next to the program, for user data (`data/` with the database, config, crops).
+  From sources it is also the repository root, in the exe it is the directory the exe file lives in.
 """
 
 from __future__ import annotations

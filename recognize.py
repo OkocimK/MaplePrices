@@ -1,20 +1,20 @@
-"""recognize.py: jedna klatka gry -> lista obserwacji (przedmiot, cena, wykupiony, sklep, mapa).
+"""recognize.py: one game frame -> list of observations (item, price, sold out, shop, map).
 
-Skleja `shopframe` (geometria, znajduje okno sklepu w klatce), `minimap` (gdzie jest
-minimapa i w jakim stanie), winocr (nazwy, tytuł sklepu, minimapa), `glyphs` (ceny) i `names`
-(kanoniczna nazwa scrolla). Nic tu nie dotyka gry ani dysku.
+Glues together `shopframe` (geometry, finds the shop window in the frame), `minimap` (where
+the minimap is and in what state), winocr (names, shop title, minimap), `glyphs` (prices) and
+`names` (canonical scroll name). Nothing here touches the game or the disk.
 
-Skala UI gry zależy od rozmiaru okna: gra dopasowuje układ do największego prostokąta 16:9
-mieszczącego się w obszarze klienta (zmierzone na 4 rozmiarach, patrz PLAN.md), więc klatka jest
-najpierw skalowana tak, żeby ten prostokąt miał wysokość referencyjną 1009 px, i dopiero wtedy
-szukane jest okno sklepu. Pozycja kursora jest skalowana tak samo.
+The game's UI scale depends on the window size: the game fits its layout to the largest 16:9
+rectangle that fits inside the client area (measured on 4 sizes, see PLAN.md), so the frame is
+first scaled so that this rectangle has the reference height of 1009 px, and only then is the
+shop window searched for. The cursor position is scaled the same way.
 
-Minimapa jest przesuwalna, może być zwinięta do jednego paska albo schowana; bez niej oferta
-idzie bez mapy i kanału, to nie jest błąd.
+The minimap is movable, can be collapsed to a single bar or hidden; without it the offer
+goes without map and channel, that is not an error.
 
-Kursor gry: gra rysuje własny kursor w miejscu kursora systemowego, a ten musi leżeć na
-oknie sklepu, żeby dało się przewijać. Wiersz, którego pola nazwy albo ceny kursor dotyka,
-jest w tej klatce pomijany; następna klatka (kursor się rusza) go dobierze.
+Game cursor: the game draws its own cursor at the system cursor position, and that one has to
+lie on the shop window for scrolling to work. A row whose name or price field the cursor touches
+is skipped in this frame; the next frame (the cursor moves) will pick it up.
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ import names
 import shopframe as sf
 
 warnings.filterwarnings("ignore")
-import winocr  # noqa: E402  (winocr ostrzega o asyncio przy imporcie)
+import winocr  # noqa: E402  (winocr warns about asyncio on import)
 
-CURSOR_BOX = (-6, -6, 30, 34)  # prostokąt sprite'a kursora względem pozycji systemowej
+CURSOR_BOX = (-6, -6, 30, 34)  # cursor sprite rectangle relative to the system position
 PRICE_MIN_CONF = 0.75
 _GLYPHS: glyphs.Glyphs | None = None
 _MINIMAP: minimap.Minimap | None = None
@@ -54,7 +54,7 @@ def _mm() -> minimap.Minimap:
 
 
 def ocr(im: Image.Image, scale: int = 3, pad: int = 10, boost: bool = False) -> str:
-    """boost=True dla wykupionych (szarych) wierszy: rozciąga kontrast, OCR gubi na nich słowa."""
+    """boost=True for sold-out (grey) rows: stretches the contrast, OCR loses words on them."""
     if boost:
         im = ImageOps.autocontrast(im, cutoff=1)
     bg = im.getpixel((im.width - 2, 2))
@@ -67,10 +67,10 @@ _PCT_TOKEN = re.compile(r"\s\d{2,3}\S*$")
 
 
 def ocr_name(im: Image.Image, sold: bool) -> str:
-    """Nazwa z wiersza. Na szarym (wykupionym) tekście winocr gubi końcowy token z procentem
-    losowo, w zależności od skali i kontrastu, więc próbujemy trzech wariantów i bierzemy
-    pierwszy z procentem, a bez procentu najdłuższy odczyt. Na 98 wykupionych wierszach
-    z bazy: jeden wariant ~52 trafień, trzy warianty 73."""
+    """Name from a row. On grey (sold-out) text winocr loses the trailing percent token
+    at random, depending on scale and contrast, so we try three variants and take the
+    first one with a percent, and without a percent the longest reading. On 98 sold-out rows
+    from the database: one variant ~52 hits, three variants 73."""
     if not sold:
         return ocr(im)
     best = ""
@@ -86,19 +86,19 @@ def ocr_name(im: Image.Image, sold: bool) -> str:
 @dataclass
 class Obs:
     row: int
-    name: str  # kanoniczna nazwa scrolla albo surowy odczyt dla innych przedmiotów
+    name: str  # canonical scroll name, or the raw reading for other items
     raw_name: str
     scroll: bool
-    complete: bool  # scroll z pełnym statem i procentem
+    complete: bool  # scroll with full stat and percent
     dark: bool | None
     equip: str | None
     stat: str | None
     pct: int | None
     price: int
     sold: bool
-    conf: float  # min(pewność ceny, pewność nazwy)
+    conf: float  # min(price confidence, name confidence)
     crop: Image.Image = field(repr=False)
-    pct_from_icon: bool = False  # procent nie z tekstu, tylko z ikony (wrażliwy na opóźnione ikony)
+    pct_from_icon: bool = False  # percent not from text but from the icon (sensitive to delayed icons)
 
 
 @dataclass
@@ -111,15 +111,15 @@ class Result:
     obs: list[Obs] = field(default_factory=list)
     skipped_cursor: int = 0
     skipped_price: int = 0
-    stale_icons: bool = False  # w klatce była ikona niezgodna z procentem w tekście
-    skipped_stale: int = 0  # wiersze pominięte, bo brałyby procent z takiej klatki
-    map_raw: str | None = None  # minimapa jak ją przeczytał OCR (do diagnostyki kanału)
-    minimap: str | None = None  # 'open', 'collapsed', 'map' (rozwinięta bez bloku z nazwą) albo None, gdy nie widać
-    minimap_box: tuple[int, int, int, int] | None = None  # skąd czytana była mapa
-    origin: tuple[int, int] = (0, 0)  # przesunięcie okna sklepu względem geometrii referencyjnej
-    scale: float = 1.0  # ile razy klatka została powiększona przed rozpoznaniem (1.0 = klient 16:9 o wysokości 1009)
-    timer_raw: str | None = None  # licznik sklepu jak go przeczytał OCR
-    ttl_min: int | None = None  # minuty do zniknięcia sklepu, None gdy nieczytelny
+    stale_icons: bool = False  # the frame had an icon inconsistent with the percent in the text
+    skipped_stale: int = 0  # rows skipped because they would take the percent from such a frame
+    map_raw: str | None = None  # minimap as read by OCR (for channel diagnostics)
+    minimap: str | None = None  # 'open', 'collapsed', 'map' (expanded without the name block) or None when not visible
+    minimap_box: tuple[int, int, int, int] | None = None  # where the map was read from
+    origin: tuple[int, int] = (0, 0)  # offset of the shop window relative to the reference geometry
+    scale: float = 1.0  # how many times the frame was enlarged before recognition (1.0 = 16:9 client of height 1009)
+    timer_raw: str | None = None  # shop timer as read by OCR
+    ttl_min: int | None = None  # minutes until the shop disappears, None when unreadable
 
 
 def _cursor_hits(cursor: tuple[int, int] | None, box: tuple[int, int, int, int]) -> bool:
@@ -136,16 +136,16 @@ def parse_title(title: str) -> str | None:
 
 
 def parse_timer(text: str) -> int | None:
-    """Licznik w prawym górnym rogu sklepu, np. „40:55", zwraca minuty do zniknięcia sklepu.
-    Format to godziny:minuty: ten sam kupiec pokazywał 40:55 na zrzutach zrobionych kilka
-    minut od siebie, więc to nie sekundy. OCR potrafi zgubić dwukropek („27215") albo dać
-    kropkę („42.01"), stąd luźne dopasowanie."""
+    """Timer in the top right corner of the shop, e.g. "40:55", returns minutes until the shop
+    disappears. The format is hours:minutes: the same merchant showed 40:55 on screenshots taken
+    a few minutes apart, so it is not seconds. OCR can lose the colon ("27215") or produce
+    a dot ("42.01"), hence the loose matching."""
     d = re.sub(r"\D", "", text)
-    if len(d) == 4:  # „40:55" -> 4055
+    if len(d) == 4:  # "40:55" -> 4055
         h, mi = int(d[:2]), int(d[2:])
-    elif len(d) == 5:  # „27215": dwukropek przeczytany jako cyfra
+    elif len(d) == 5:  # "27215": colon read as a digit
         h, mi = int(d[:2]), int(d[3:])
-    elif len(d) == 3:  # „7:05" -> 705
+    elif len(d) == 3:  # "7:05" -> 705
         h, mi = int(d[0]), int(d[1:])
     else:
         return None
@@ -155,9 +155,9 @@ def parse_timer(text: str) -> int | None:
 
 
 def parse_minimap(text: str) -> tuple[str | None, int | None]:
-    """'Hidden Street;u Free Market<l>' -> ('Free Market', 1). Ikona minimapy śmieci w OCR,
-    a przy dwucyfrowym kanale OCR skleja linie („Hidden Streeti Free Market<12>"), więc
-    nazwę bierzemy od ostatniego znanego słowa, a kanał z ostatniej grupy cyfr."""
+    """'Hidden Street;u Free Market<l>' -> ('Free Market', 1). The minimap icon produces garbage
+    in OCR, and with a two-digit channel OCR joins the lines ("Hidden Streeti Free Market<12>"),
+    so the name is taken from the last known word, and the channel from the last group of digits."""
     text = text.replace("\n", " ")
     low = text.lower()
     if "free" in low:
@@ -168,19 +168,19 @@ def parse_minimap(text: str) -> tuple[str | None, int | None]:
         name = re.sub(r"^(?:\S{1,2}\s+)+", "", m.group(1).strip()) if m else (text.strip() or None)
         tail = text
     ch_txt = re.sub(r"[lI]", "1", re.sub(r"[oO]", "0", tail))
-    m = re.search(r"<\s*(\d{1,2})|(\d{1,2})\D{0,3}$", ch_txt)  # „Markets9?" też przechodzi
+    m = re.search(r"<\s*(\d{1,2})|(\d{1,2})\D{0,3}$", ch_txt)  # "Markets9?" passes too
     ch = next((g for g in m.groups() if g), None) if m else None
     return name, (int(ch) if ch else None)
 
 
 def ui_scale(size: tuple[int, int]) -> float:
-    """Ile razy powiększyć klatkę o tym rozmiarze, żeby UI miało skalę referencyjną."""
+    """How many times to enlarge a frame of this size so that the UI has the reference scale."""
     w, h = size
     return sf.REF_H / min(h, w * 9 / 16)
 
 
 def normalize(frame: Image.Image) -> tuple[Image.Image, float]:
-    """Klatka w skali referencyjnej i użyty współczynnik (1.0 = bez zmian)."""
+    """Frame at the reference scale and the factor used (1.0 = unchanged)."""
     s = ui_scale(frame.size)
     if abs(s - 1.0) < 0.002:
         return frame, 1.0
@@ -188,7 +188,7 @@ def normalize(frame: Image.Image) -> tuple[Image.Image, float]:
 
 
 def recognize(frame: Image.Image, cursor: tuple[int, int] | None = None) -> Result:
-    """`cursor` to pozycja kursora we współrzędnych obszaru klienta okna gry, albo None."""
+    """`cursor` is the cursor position in the coordinates of the game window's client area, or None."""
     frame, scale = normalize(frame)
     if cursor is not None and scale != 1.0:
         cursor = (round(cursor[0] * scale), round(cursor[1] * scale))
@@ -205,9 +205,9 @@ def recognize(frame: Image.Image, cursor: tuple[int, int] | None = None) -> Resu
         res.map_raw = ocr(frame.crop(res.minimap_box), scale=2)
         res.map, res.channel = parse_minimap(res.map_raw)
         if res.channel is None and "free" not in res.map_raw.lower():
-            # Rozwinięta minimapa zmniejszona przyciskiem „−" pokazuje samą mapę bez bloku z nazwą,
-            # a OCR czyta wtedy śmieci z obrazka mapy. Kanał „<N>" jest w tym bloku zawsze, więc
-            # bez niego nazwa nie jest wiarygodna: oferta idzie bez mapy, jak przy schowanej minimapie.
+            # An expanded minimap shrunk with the "-" button shows only the map without the name block,
+            # and OCR then reads garbage from the map image. The channel "<N>" is always in that block, so
+            # without it the name is not reliable: the offer goes without a map, as with a hidden minimap.
             res.map = None
             res.minimap = "map"
     g = _g()
@@ -232,10 +232,10 @@ def recognize(frame: Image.Image, cursor: tuple[int, int] | None = None) -> Resu
         if sc is not None:
             pct_from_text = bool(_PCT_TOKEN.search(raw))
             if pct_from_text and sc.pct is not None and not r.sold:
-                # Bezpiecznik na opóźnione ikony: procent z tekstu jest pewny, więc ikona,
-                # która z pewnością mówi co innego, znaczy, że ikony w tej klatce są jeszcze
-                # z poprzedniego stanu listy. W bazie z pierwszej sesji: 4,6% klatek.
-                # Tylko aktywne wiersze: wyblakłe wzorce mają za mało próbek, żeby im ufać.
+                # Safeguard against delayed icons: the percent from the text is certain, so an icon
+                # that confidently says something else means the icons in this frame are still
+                # from the previous state of the list. In the first session's database: 4.6% of frames.
+                # Active rows only: the faded patterns have too few samples to be trusted.
                 ip = names.pct_from_icon(r.icon, False)
                 if ip is not None and ip != sc.pct:
                     res.stale_icons = True
@@ -260,10 +260,10 @@ if __name__ == "__main__":
         for f in sorted(glob.glob(pat)):
             r = recognize(Image.open(f))
             if not r.open:
-                print(f"{f}: sklep zamknięty")
+                print(f"{f}: shop closed")
                 continue
-            print(f"{f}: {r.owner!r} @ {r.map}<{r.channel}> (minimapa {r.minimap}, sklep @{r.origin}, skala {r.scale:.3f}) znika za {r.ttl_min} min ({r.timer_raw!r})  pominięte: kursor {r.skipped_cursor}, cena {r.skipped_price}, nieświeże ikony {r.skipped_stale}")
+            print(f"{f}: {r.owner!r} @ {r.map}<{r.channel}> (minimap {r.minimap}, shop @{r.origin}, scale {r.scale:.3f}) disappears in {r.ttl_min} min ({r.timer_raw!r})  skipped: cursor {r.skipped_cursor}, price {r.skipped_price}, stale icons {r.skipped_stale}")
             for o in r.obs:
                 flag = "SOLD" if o.sold else "    "
-                kind = ("scroll" if o.complete else "scroll?") if o.scroll else "inny"
+                kind = ("scroll" if o.complete else "scroll?") if o.scroll else "other"
                 print(f"   r{o.row} {flag} {kind:7} {o.price:>14,}  {o.name}  (conf {o.conf:.2f})")

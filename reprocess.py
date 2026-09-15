@@ -1,11 +1,11 @@
-"""reprocess.py: przelicza niepełne obserwacje scrolli w bazie z zapisanych wycinków.
+"""reprocess.py: recomputes incomplete scroll observations in the database from the saved crops.
 
-Po zmianie parsera nazw albo wzorców ikon nie trzeba chodzić po FM od nowa: każdy wiersz
-ma wycinek (ikona + nazwa + cena), więc nazwę i procent da się odczytać jeszcze raz.
-Cena zostaje, jak była (glify były pewne od początku).
+After a change to the name parser or the icon templates there is no need to walk the FM again:
+every row has a crop (icon + name + price), so the name and the percent can be read once more.
+The price stays as it was (the glyphs were certain from the start).
 
-    .venv\\Scripts\\python reprocess.py data/prices.sqlite          # tylko niepełne
-    .venv\\Scripts\\python reprocess.py data/prices.sqlite --all    # wszystkie scrolle
+    .venv\\Scripts\\python reprocess.py data/prices.sqlite          # only incomplete ones
+    .venv\\Scripts\\python reprocess.py data/prices.sqlite --all    # all scrolls
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from PIL import Image
 import names
 import recognize
 
-NAME_IN_CROP = (73, 3, 366, 30)  # = shopframe.NAME przesunięte o początek wycinka (x=482, y=0)
+NAME_IN_CROP = (73, 3, 366, 30)  # = shopframe.NAME shifted by the crop origin (x=482, y=0)
 ICON_IN_CROP = (0, 4, 70, 72)
 
 
@@ -43,7 +43,7 @@ def main() -> int:
         sc = names.parse(raw, crop.crop(ICON_IN_CROP), bool(sold))
         if sc is None:
             worse += 1
-            print(f"  {oid}: parser odrzucił {raw!r} (było {old!r}), zostawiam")
+            print(f"  {oid}: parser rejected {raw!r} (was {old!r}), leaving it")
             continue
         complete = int(sc.complete and sc.score >= 0.8)
         if sc.name == old:
@@ -51,7 +51,7 @@ def main() -> int:
             continue
         if old.count("?") < sc.name.count("?"):
             worse += 1
-            print(f"  {oid}: nowy odczyt gorszy {sc.name!r} (było {old!r}), zostawiam")
+            print(f"  {oid}: new reading is worse {sc.name!r} (was {old!r}), leaving it")
             continue
         db.execute(
             "UPDATE obs SET name=?, raw_name=?, complete=?, dark=?, equip=?, stat=?, pct=?, conf=? WHERE id=?",
@@ -60,7 +60,7 @@ def main() -> int:
         fixed += 1
         print(f"  {oid}: {old!r} -> {sc.name!r}")
     db.commit()
-    print(f"poprawione {fixed}, bez zmian {same}, gorsze/odrzucone {worse}, razem {len(rows)}")
+    print(f"fixed {fixed}, unchanged {same}, worse/rejected {worse}, total {len(rows)}")
     return 0
 
 

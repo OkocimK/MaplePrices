@@ -1,17 +1,17 @@
-"""glyphs.py: odczyt liczb (cena) przez dopasowanie glifów, bez OCR.
+"""glyphs.py: reading numbers (the price) by glyph matching, without OCR.
 
-Dlaczego nie OCR: Windows OCR (winocr) czyta nazwy bezbłędnie, ale w części wycinków cen
-zwraca samo „mesos" i gubi liczbę, niezależnie od skali, marginesu i binaryzacji. Font gry
-jest stały (Noto Sans, cyfry tabelaryczne), więc każdą cyfrę da się rozpoznać porównując
-z uśrednionym wzorcem.
+Why not OCR: Windows OCR (winocr) reads the names flawlessly, but in some of the price crops
+it returns just "mesos" and loses the number, regardless of scale, margin and binarisation. The
+game font is fixed (Noto Sans, tabular digits), so every digit can be recognised by comparing
+it with an averaged template.
 
-Wzorce (`price_glyphs.json`) uczy się z wycinków, które winocr przeczytał w całości:
-liczba segmentów w obrazie musi równać się liczbie znaków w odczycie, wtedy każdy segment
-dostaje etykietę. Wzorzec to znormalizowany obraz w skali szarości, więc działa i dla
-aktywnego (ciemnego), i dla wykupionego (szarego) tekstu.
+The templates (`price_glyphs.json`) are learned from the crops that winocr read in full:
+the number of segments in the image must equal the number of characters in the reading, then
+every segment gets a label. A template is a normalised greyscale image, so it works both for
+active (dark) and for sold-out (grey) text.
 
-    .venv\\Scripts\\python glyphs.py build crops_dir ocr.json   # zbuduj wzorce
-    .venv\\Scripts\\python glyphs.py test  crops_dir ocr.json   # porównaj z odczytami winocr
+    .venv\\Scripts\\python glyphs.py build crops_dir ocr.json   # build the templates
+    .venv\\Scripts\\python glyphs.py test  crops_dir ocr.json   # compare with the winocr readings
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ from PIL import Image
 from paths import RES_DIR
 
 GLYPH_FILE = RES_DIR / "price_glyphs.json"
-TEMPLATE_H = 24  # wysokość wspólnego pudełka wzorca (glify wyrównane do dolnej linii)
+TEMPLATE_H = 24  # height of the common template box (glyphs aligned to the bottom line)
 TEMPLATE_W = 14
-SPACE_GAP = 5  # tyle kolumn tła oddziela liczbę od „mesos"
+SPACE_GAP = 5  # this many background columns separate the number from "mesos"
 CHARS = "0123456789,"
 
 
 def _fg_mask(a: np.ndarray) -> tuple[np.ndarray, float, float]:
-    """Maska pikseli tekstu i (tło, tekst) jako jasności. Tekst jest ciemniejszy od tła."""
+    """Mask of the text pixels and (background, text) as brightness. Text is darker than background."""
     g = a.mean(axis=2) if a.ndim == 3 else a.astype(float)
     bg = float(np.median(g))
     fg = float(np.percentile(g, 2))
@@ -42,8 +42,8 @@ def _fg_mask(a: np.ndarray) -> tuple[np.ndarray, float, float]:
 
 
 def segments(img: Image.Image) -> tuple[list[tuple[int, int]], np.ndarray]:
-    """Zwraca listę (x0, x1) kolejnych glifów liczby (do pierwszej spacji) i mapę jasności
-    znormalizowaną tak, że tło = 0, pełny tekst = 1."""
+    """Returns the list of (x0, x1) of the consecutive glyphs of the number (up to the first
+    space) and a brightness map normalised so that background = 0, full text = 1."""
     a = np.asarray(img.convert("RGB")).astype(float)
     mask, bg, fg = _fg_mask(a)
     g = a.mean(axis=2)
@@ -63,13 +63,13 @@ def segments(img: Image.Image) -> tuple[list[tuple[int, int]], np.ndarray]:
         else:
             gap += 1
             if segs and gap >= SPACE_GAP:
-                break  # koniec liczby, dalej jest „mesos"
+                break  # end of the number, "mesos" follows
             x += 1
     return segs, norm
 
 
 def _crop_glyph(norm: np.ndarray, x0: int, x1: int) -> np.ndarray:
-    """Glif w pudełku TEMPLATE_H×TEMPLATE_W, wyrównany do dolnej krawędzi tekstu i do lewej."""
+    """Glyph in a TEMPLATE_H×TEMPLATE_W box, aligned to the bottom edge of the text and to the left."""
     col = norm[:, x0:x1]
     rows = np.where((col > 0.45).any(axis=1))[0]
     if len(rows) == 0:
@@ -83,7 +83,7 @@ def _crop_glyph(norm: np.ndarray, x0: int, x1: int) -> np.ndarray:
 
 
 def _baseline(norm: np.ndarray, segs: list[tuple[int, int]]) -> int:
-    """Dolna linia cyfr (przecinek wisi niżej, więc bierzemy medianę po segmentach)."""
+    """Bottom line of the digits (the comma hangs lower, so we take the median over the segments)."""
     bottoms = []
     for x0, x1 in segs:
         rows = np.where((norm[:, x0:x1] > 0.45).any(axis=1))[0]
@@ -99,8 +99,8 @@ def _features(norm: np.ndarray, segs: list[tuple[int, int]]) -> list[np.ndarray]
         col = norm[:, x0:x1]
         rows = np.where((col > 0.45).any(axis=1))[0]
         bottom = rows.max() + 1 if len(rows) else base
-        # przecinek: dół poniżej linii bazowej cyfr; trzymamy pozycję względem bazy, żeby
-        # odróżnić go od kropki/cyfry o podobnym kształcie
+        # comma: its bottom is below the baseline of the digits; we keep the position relative to
+        # the baseline to tell it apart from a dot/digit of similar shape
         top = max(0, base - TEMPLATE_H + 4)
         box = np.zeros((TEMPLATE_H, TEMPLATE_W))
         piece = col[top : base + 4, :TEMPLATE_W]
@@ -117,7 +117,7 @@ class Glyphs:
         self.widths = np.array(d["widths"], dtype=float)
 
     def read(self, img: Image.Image) -> tuple[int | None, float, str]:
-        """(liczba albo None, najgorsze dopasowanie w [0,1], surowy ciąg znaków)."""
+        """(number or None, worst match in [0,1], raw character string)."""
         segs, norm = segments(img)
         if not segs:
             return None, 0.0, ""
@@ -127,12 +127,12 @@ class Glyphs:
         for (x0, x1), f in zip(segs, feats):
             fv = f.ravel()
             tv = self.templates.reshape(len(self.labels), -1)
-            # korelacja znormalizowana (odporna na kontrast: aktywny vs wykupiony tekst)
+            # normalised correlation (robust to contrast: active vs sold-out text)
             fc = fv - fv.mean()
             tc = tv - tv.mean(axis=1, keepdims=True)
             den = np.linalg.norm(fc) * np.linalg.norm(tc, axis=1) + 1e-9
             score = (tc @ fc) / den
-            # kara za inną szerokość glifu (przecinek jest wąski, cyfry szerokie)
+            # penalty for a different glyph width (the comma is narrow, digits are wide)
             score = score - 0.08 * np.abs(self.widths - (x1 - x0)) / TEMPLATE_W
             i = int(score.argmax())
             chars.append(self.labels[i])
@@ -141,7 +141,7 @@ class Glyphs:
         digits = raw.replace(",", "")
         if not digits.isdigit():
             return None, worst, raw
-        # przecinki muszą stać co trzy cyfry od prawej, inaczej odczyt jest podejrzany
+        # commas must stand every three digits from the right, otherwise the reading is suspect
         expect = f"{int(digits):,}"
         if raw != expect:
             worst = min(worst, 0.0)
@@ -170,9 +170,9 @@ def build(crops: Path, ocr_json: Path) -> None:
     templates = [np.mean(acc[c], axis=0).tolist() for c in labels]
     widths = [float(np.median(wid[c])) for c in labels]
     GLYPH_FILE.write_text(json.dumps({"labels": labels, "templates": templates, "widths": widths}), encoding="utf-8")
-    print(f"wzorce z {used} wierszy: " + ", ".join(f"{c}:{len(acc[c])}" for c in labels))
+    print(f"templates from {used} rows: " + ", ".join(f"{c}:{len(acc[c])}" for c in labels))
     if missing:
-        print("BRAK próbek dla:", missing)
+        print("NO samples for:", missing)
 
 
 def test(crops: Path, ocr_json: Path) -> None:
@@ -185,13 +185,13 @@ def test(crops: Path, ocr_json: Path) -> None:
         ref = o.get("price")
         if val is None:
             none += 1
-            print(f"  BRAK  {o['row']}  raw={raw!r} conf={conf:.2f} winocr={o.get('price_raw')!r}")
+            print(f"  NONE  {o['row']}  raw={raw!r} conf={conf:.2f} winocr={o.get('price_raw')!r}")
         elif ref is not None and val == ref:
             agree += 1
         else:
             differ += 1
-            print(f"  ROZNI {o['row']}  glyph={val:,} conf={conf:.2f} winocr={o.get('price_raw')!r}")
-    print(f"zgodne z winocr: {agree}, różne/brak w winocr: {differ}, nieodczytane: {none}, razem {len(d)}")
+            print(f"  DIFF  {o['row']}  glyph={val:,} conf={conf:.2f} winocr={o.get('price_raw')!r}")
+    print(f"agree with winocr: {agree}, differ/missing in winocr: {differ}, unread: {none}, total {len(d)}")
 
 
 if __name__ == "__main__":

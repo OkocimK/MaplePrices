@@ -1,16 +1,16 @@
-"""build_exe.py: jeden plik `dist/osmsfm-tracker.exe` przez PyInstaller.
+"""build_exe.py: a single file `dist/osmsfm-tracker.exe` via PyInstaller.
 
     .venv\\Scripts\\python build_exe.py
 
-Co wchodzi: tracker.py z zależnościami, wzorce glifów i ikon, viewer.html (przez paths.RES_DIR).
-Pułapki, które trzeba obejść ręcznie:
-- winocr importuje moduły winrt (`winrt.windows.media.ocr` itd.), które ładują swoje .pyd
-  po nazwie w czasie działania, więc PyInstaller ich sam nie znajdzie: collect-all na
-  każdym pakiecie winrt-*.
-- keyboard i mss są czyste, pywin32 ma własny hook w PyInstallerze.
-- Dane użytkownika (`data/`) lądują obok exe (paths.APP_DIR), nie w katalogu rozpakowania.
+What goes in: tracker.py with its dependencies, glyph and icon templates, viewer.html (via paths.RES_DIR).
+Pitfalls that have to be worked around by hand:
+- winocr imports winrt modules (`winrt.windows.media.ocr` etc.), which load their .pyd
+  files by name at runtime, so PyInstaller will not find them on its own: collect-all on
+  every winrt-* package.
+- keyboard and mss are pure, pywin32 has its own hook in PyInstaller.
+- User data (`data/`) lands next to the exe (paths.APP_DIR), not in the extraction directory.
 
-Exe jest konsolowe celowo: log trackera to jedyne miejsce, gdzie widać, co się dzieje.
+The exe is a console one on purpose: the tracker log is the only place where you can see what is going on.
 """
 
 from __future__ import annotations
@@ -23,10 +23,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 NAME = "osmsfm-tracker"
 
-# Każda dystrybucja winrt-* wrzuca do wspólnego pakietu `winrt` jeden .pyd w rodzaju
-# `winrt/_winrt_windows_media_ocr.cp312-win_amd64.pyd`, ładowany po nazwie w czasie działania.
-# collect-all na `winrt` zbiera pakiet, a jawne hidden-import na każdym .pyd dopina to,
-# czego analiza statyczna nie widzi.
+# Every winrt-* distribution drops into the shared `winrt` package one .pyd like
+# `winrt/_winrt_windows_media_ocr.cp312-win_amd64.pyd`, loaded by name at runtime.
+# collect-all on `winrt` gathers the package, and an explicit hidden-import on every .pyd
+# pins down what static analysis does not see.
 pyds = sorted(
     "winrt." + Path(str(f)).name.split(".")[0]
     for d in md.distributions()
@@ -40,7 +40,7 @@ for m in pyds:
 winrt_pkgs = pyds
 
 if not (HERE / "token.txt").exists():
-    sys.exit("brak token.txt (token z /etc/osmsfm/token na serwerze, publish.py go wypisuje)")
+    sys.exit("missing token.txt (the token from /etc/osmsfm/token on the server, publish.py prints it)")
 
 cmd = [
     sys.executable, "-m", "PyInstaller",
@@ -53,8 +53,8 @@ cmd = [
     "--add-data", f"{HERE / 'icon_templates.json'};.",
     "--add-data", f"{HERE / 'minimap_templates.json'};.",
     "--add-data", f"{HERE / 'viewer.html'};.",
-    "--add-data", f"{HERE / 'token.txt'};.",  # sekret poza gitem, patrz sync.py
-    "--exclude-module", "cv2",  # nieużywane, a doklejałoby 60 MB
+    "--add-data", f"{HERE / 'token.txt'};.",  # secret kept outside git, see sync.py
+    "--exclude-module", "cv2",  # unused, and it would add 60 MB
     "--exclude-module", "tkinter",
     "--exclude-module", "rapidocr_onnxruntime",
     "--exclude-module", "onnxruntime",
@@ -62,7 +62,7 @@ cmd = [
     *collect,
     str(HERE / "tracker.py"),
 ]
-print("pakiety winrt:", ", ".join(winrt_pkgs))
+print("winrt packages:", ", ".join(winrt_pkgs))
 r = subprocess.run(cmd, cwd=HERE)
 if r.returncode == 0:
     exe = HERE / "dist" / f"{NAME}.exe"

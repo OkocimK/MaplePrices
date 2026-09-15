@@ -1,26 +1,26 @@
-"""minimap.py: gdzie w klatce jest minimapa i skąd czytać nazwę mapy z kanałem.
+"""minimap.py: where the minimap is in the frame and where to read the map name with the channel from.
 
-Okno minimapy jest przesuwalne i ma dwa stany (zmierzone na zrzutach z 15 września 2026):
-- rozwinięte: nagłówek „MINI MAP" + przyciski [−][+][WORLD], pod nim ikona i dwie linie
-  tekstu („Hidden Street" / „Free Market<1>"),
-- zwinięte: jeden pasek „Hidden Street : Free Market<1>" + te same przyciski.
-Może też być schowane całkiem; wtedy oferty idą bez mapy i kanału, to nie jest błąd.
+The minimap window is movable and has two states (measured on screenshots from 15 September 2026):
+- expanded: the "MINI MAP" header + [-][+][WORLD] buttons, below it an icon and two lines
+  of text ("Hidden Street" / "Free Market<1>"),
+- collapsed: a single bar "Hidden Street : Free Market<1>" + the same buttons.
+It can also be hidden entirely; then the offers go without map and channel, that is not an error.
 
-Kotwicą jest przycisk WORLD (ten sam w obu stanach): szukany znormalizowaną korelacją
-szablonu w połowie rozdzielczości, potem doprecyzowany w pełnej, a między klatkami
-sprawdzany najpierw w ostatnim znanym miejscu. Klatka i szablon są przed korelacją lekko
-rozmyte (gauss σ=1): bez tego przycisk z klatki przeskalowanej do skali referencyjnej
-(inny rozmiar okna gry) dostawał 0.8 i przegrywał z fałszywymi trafieniami, z rozmyciem
-dostaje 0.95. Rozmycie podnosi jednak też fałszywe trafienia (rozmyty przycisk to jasny
-prostokąt, jasne okna dają 0.9), więc kandydat musi być jeszcze pomarańczowożółty jak przycisk
-(udział takich pikseli 0.68..0.76 na pozytywach, 0.00 na negatywach).
-Stan rozróżnia etykieta „MINI MAP" na lewo od przycisków. Rozwinięta minimapa
-może też pokazywać samą mapę bez bloku z nazwą (po zmniejszeniu przyciskiem „−"); tego stanu
-nie widać po pikselach, rozstrzyga OCR w recognize (brak kanału „<N>" w tekście).
-Szablony leżą w `minimap_templates.json`, wycięte z próbki referencyjnej 1920×1009 przez:
+The anchor is the WORLD button (the same in both states): searched for by normalized template
+correlation at half resolution, then refined at full resolution, and between frames
+checked first at the last known place. The frame and the template are slightly blurred before
+the correlation (gaussian σ=1): without it the button from a frame rescaled to the reference scale
+(a different game window size) got 0.8 and lost to false hits, with the blur
+it gets 0.95. The blur however also raises the false hits (a blurred button is a bright
+rectangle, bright windows give 0.9), so the candidate must additionally be orange-yellow like the button
+(fraction of such pixels 0.68..0.76 on positives, 0.00 on negatives).
+The state is told apart by the "MINI MAP" label to the left of the buttons. An expanded minimap
+can also show only the map without the name block (after shrinking it with the "-" button); this state
+is not visible from the pixels, OCR in recognize decides (no channel "<N>" in the text).
+The templates live in `minimap_templates.json`, cut from the 1920×1009 reference sample by:
 
-    .venv\\Scripts\\python minimap.py build samples\\klatka.png
-    .venv\\Scripts\\python minimap.py test samples\\*.png     # gdzie i w jakim stanie
+    .venv\\Scripts\\python minimap.py build samples\\frame.png
+    .venv\\Scripts\\python minimap.py test samples\\*.png     # where and in what state
 """
 
 from __future__ import annotations
@@ -36,26 +36,26 @@ from paths import RES_DIR
 
 TEMPLATE_FILE = RES_DIR / "minimap_templates.json"
 
-# W klatce referencyjnej (okno minimapy rozwinięte, dosunięte do lewego górnego rogu).
-WORLD_BOX = (194, 15, 254, 33)  # wnętrze przycisku WORLD, bez ramki
-LABEL_BOX = (8, 14, 92, 32)  # etykieta „MINI MAP"
-# Prostokąty względem lewego górnego rogu WORLD_BOX.
+# In the reference frame (minimap window expanded, pushed into the top left corner).
+WORLD_BOX = (194, 15, 254, 33)  # interior of the WORLD button, without the frame
+LABEL_BOX = (8, 14, 92, 32)  # the "MINI MAP" label
+# Rectangles relative to the top left corner of WORLD_BOX.
 LABEL_AT = (LABEL_BOX[0] - WORLD_BOX[0], LABEL_BOX[1] - WORLD_BOX[1])
-TEXT_OPEN = (84 - WORLD_BOX[0], 50 - WORLD_BOX[1], 262 - WORLD_BOX[0], 108 - WORLD_BOX[1])  # dwie linie pod nagłówkiem
-TEXT_COLLAPSED = (-357, -4, -54, 21)  # pasek na lewo od przycisków, do przycisku „−"
+TEXT_OPEN = (84 - WORLD_BOX[0], 50 - WORLD_BOX[1], 262 - WORLD_BOX[0], 108 - WORLD_BOX[1])  # two lines under the header
+TEXT_COLLAPSED = (-357, -4, -54, 21)  # bar to the left of the buttons, up to the "-" button
 
-WORLD_MIN = 0.8  # korelacja przycisku w pełnej rozdzielczości (po rozmyciu; negatywy dają do 0.6)
-WORLD_MIN_HALF = 0.6  # kandydat z połowy rozdzielczości
+WORLD_MIN = 0.8  # button correlation at full resolution (after blur; negatives give up to 0.6)
+WORLD_MIN_HALF = 0.6  # candidate from half resolution
 LABEL_MIN = 0.7
-REFINE = 3  # promień doprecyzowania w px
-BLUR = 1.0  # sigma rozmycia klatki i szablonów przed korelacją
-YELLOW_MIN = 0.3  # tyle pikseli kandydata musi mieć kolor wypełnienia przycisku
+REFINE = 3  # refinement radius in px
+BLUR = 1.0  # sigma of the blur applied to the frame and the templates before correlation
+YELLOW_MIN = 0.3  # this many of the candidate's pixels must have the button's fill colour
 
 
 def _ncc_map(g: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """Znormalizowana korelacja szablonu t po obrazie g (oba float64) przez FFT.
-    Wynik [y, x] dotyczy okna o lewym górnym rogu (x, y). Sumy w float64, bo w float32
-    różnice sum kwadratów po całej klatce tracą precyzję."""
+    """Normalized correlation of template t over image g (both float64) via FFT.
+    The result [y, x] refers to the window with its top left corner at (x, y). Sums in float64, because
+    in float32 the differences of sums of squares over the whole frame lose precision."""
     hh, ww = g.shape
     h, w = t.shape
     t0 = t - t.mean()
@@ -105,7 +105,7 @@ def _blur(im: Image.Image) -> np.ndarray:
 
 
 def _yellow_frac(a: np.ndarray, x: int, y: int) -> float:
-    """Udział pikseli w kolorze wypełnienia przycisku WORLD w prostokącie szablonu o rogu (x, y)."""
+    """Fraction of pixels in the WORLD button's fill colour within the template rectangle with corner (x, y)."""
     h, w = WORLD_BOX[3] - WORLD_BOX[1], WORLD_BOX[2] - WORLD_BOX[0]
     box = a[max(y, 0) : y + h, max(x, 0) : x + w].astype(np.int16)
     if box.size == 0:
@@ -123,8 +123,8 @@ class Minimap:
         self.last: tuple[int, int] | None = None
 
     def find(self, frame: Image.Image) -> tuple[str, tuple[int, int, int, int]] | None:
-        """(stan, prostokąt z tekstem mapy) albo None, gdy minimapy nie widać.
-        Stan to 'open' (rozwinięta) albo 'collapsed' (zwinięty pasek)."""
+        """(state, rectangle with the map text) or None when the minimap is not visible.
+        The state is 'open' (expanded) or 'collapsed' (collapsed bar)."""
         g = _blur(frame)
         a = np.asarray(frame.convert("RGB"))
         pos = None
@@ -163,7 +163,7 @@ def build(sample: Path) -> None:
         "label": g[LABEL_BOX[1] : LABEL_BOX[3], LABEL_BOX[0] : LABEL_BOX[2]].tolist(),
     }
     TEMPLATE_FILE.write_text(json.dumps(d), encoding="utf-8")
-    print(f"zapisano {TEMPLATE_FILE} z {sample}")
+    print(f"saved {TEMPLATE_FILE} from {sample}")
 
 
 def main(argv: list[str]) -> int:
@@ -177,7 +177,7 @@ def main(argv: list[str]) -> int:
         mm = Minimap()
         for pat in argv[1:]:
             for f in sorted(glob.glob(pat)):
-                mm.last = None  # każdą klatkę szukaj od zera
+                mm.last = None  # search every frame from scratch
                 t0 = time.time()
                 r = mm.find(Image.open(f))
                 print(f"{Path(f).name}: {r}  WORLD@{mm.last}  {1000 * (time.time() - t0):.0f} ms")

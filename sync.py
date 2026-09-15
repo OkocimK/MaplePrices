@@ -1,19 +1,19 @@
-"""sync.py: wysyłka obserwacji z lokalnej bazy do odbiornika na serwerze (server/ingest.py).
+"""sync.py: upload of observations from the local database to the receiver on the server (server/ingest.py).
 
-Adres serwera i token są wpisane na sztywno (DEFAULT_SERVER, DEFAULT_TOKEN), żeby znajomy
-po uruchomieniu exe nie musiał nic wpisywać. Przy pierwszym starcie powstaje
-`data/config.json` z tymi wartościami i losowym, anonimowym identyfikatorem klienta:
-    {"server": "https://osmsfm.duckdns.org", "token": "<wspólny sekret>", "client": "anon-3f9c2a"}
-Kto chce się podpisać nickiem, edytuje ten plik. Postęp w `data/sync.json`: {"last_id": N}, czyli do
-którego lokalnego id wszystko już poszło.
+The server address and token are hard-coded (DEFAULT_SERVER, DEFAULT_TOKEN), so a friend
+running the exe does not have to type anything. On first start `data/config.json` is created
+with these values and a random, anonymous client id:
+    {"server": "https://osmsfm.duckdns.org", "token": "<shared secret>", "client": "anon-3f9c2a"}
+Whoever wants to sign with a nickname edits that file. Progress in `data/sync.json`: {"last_id": N},
+i.e. up to which local id everything has already been sent.
 
-Wiersze idą paczkami po BATCH, każdy z wycinkiem jako PNG w base64 (paleta 128 kolorów,
-~16 KB). Serwer deduplikuje sam, więc ponowne wysłanie tej samej paczki po zerwanym
-połączeniu jest bezpieczne. Nic nie schodzi z serwera na klienta: lokalna baza zostaje
-lokalną kopią tego, co ten klient widział.
+Rows go in batches of BATCH, each with its crop as a base64 PNG (128-colour palette,
+~16 KB). The server deduplicates on its own, so re-sending the same batch after a dropped
+connection is safe. Nothing flows from the server down to the client: the local database stays
+a local copy of what this client has seen.
 
-    .venv\\Scripts\\python sync.py            # wyślij wszystko, co jeszcze nie poszło
-    .venv\\Scripts\\python sync.py --setup    # zapytaj o serwer, token i nick, zapisz config
+    .venv\\Scripts\\python sync.py            # send everything that has not gone yet
+    .venv\\Scripts\\python sync.py --setup    # ask for server, token and nickname, save the config
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ STATE = DATA / "sync.json"
 BATCH = 150
 TIMEOUT = 120
 
-# Wspólny token dla trackerów znajomych leży w `token.txt` obok źródeł (poza gitem, repo jest
-# publiczne) i jest wbudowywany w exe przez build_exe.py. Ten sam siedzi w /etc/osmsfm/token
-# na serwerze; nowy: usunąć tamten plik, publish.py założy inny, wpisać tutaj, zbudować exe.
+# The shared token for the friends' trackers lives in `token.txt` next to the sources (outside git,
+# the repo is public) and is built into the exe by build_exe.py. The same one sits in /etc/osmsfm/token
+# on the server; to rotate it: delete that file, publish.py creates a new one, put it here, build the exe.
 DEFAULT_SERVER = "https://osmsfm.duckdns.org"
 _TOKEN_FILE = RES_DIR / "token.txt"
 DEFAULT_TOKEN = _TOKEN_FILE.read_text(encoding="utf-8").strip() if _TOKEN_FILE.exists() else ""
@@ -48,15 +48,15 @@ class SyncError(RuntimeError):
 
 
 def _default_client() -> str:
-    """Losowy, stały dla instalacji identyfikator zamiast nicku: użytkownicy mają zostać
-    anonimowi, a serwer i tak potrzebuje tylko rozróżnić klientów (np. odciąć śmieci od
-    jednego). Nazwa użytkownika Windows odpadła, bo bywa imieniem i nazwiskiem."""
+    """A random identifier, fixed per installation, instead of a nickname: users are to stay
+    anonymous, and the server only needs to tell clients apart anyway (e.g. to cut off junk from
+    one of them). The Windows user name was rejected because it is often a real first and last name."""
     return "anon-" + secrets.token_hex(3)
 
 
 def load_config() -> dict:
-    """Czyta `data/config.json`, a gdy go nie ma albo jest niepełny, dopisuje brakujące pola
-    z wartości domyślnych i zapisuje. Nigdy nie pyta."""
+    """Reads `data/config.json`; when it is missing or incomplete, fills in the missing fields
+    from the defaults and saves it. Never asks."""
     c: dict = {}
     if CONFIG.exists():
         try:
@@ -78,7 +78,7 @@ def load_config() -> dict:
 
 
 def setup(defaults: dict | None = None) -> dict:
-    """Ręczna zmiana ustawień (`sync.py --setup`); zwykły start nie pyta o nic."""
+    """Manual change of settings (`sync.py --setup`); a normal start asks nothing."""
     d = defaults or load_config()
     print("Upload settings (Enter keeps the value in brackets).")
     server = input(f"  server address [{d['server']}]: ").strip() or d["server"]
@@ -104,7 +104,7 @@ def _save_last_id(n: int) -> None:
 def _crop_b64(path: Path) -> str | None:
     if not path.exists():
         return None
-    from PIL import Image  # tylko tu, store.py ma zostać bez Pillow
+    from PIL import Image  # only here, store.py must stay free of Pillow
 
     buf = io.BytesIO()
     Image.open(path).convert("RGB").quantize(128, dither=Image.Dither.NONE).save(buf, "PNG", optimize=True)
@@ -131,7 +131,7 @@ def _post(cfg: dict, payload: dict) -> dict:
 
 
 def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
-    """Wysyła wszystko powyżej last_id. Zwraca (wysłane, przyjęte jako nowe)."""
+    """Sends everything above last_id. Returns (sent, accepted as new)."""
     last = _last_id()
     sent = accepted = 0
     while True:
