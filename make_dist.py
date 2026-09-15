@@ -20,7 +20,7 @@ def main() -> None:
     out = HERE / "dist" / "osmsfm-tracker.zip"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(exe, exe.name)
-        z.write(HERE / "README-znajomi.md", "README.md")
+        z.write(HERE / "USER-GUIDE.md", "README.md")
     print(f"{out} ({out.stat().st_size / 1e6:.1f} MB)")
 
 

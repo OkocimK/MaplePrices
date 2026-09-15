@@ -7,7 +7,7 @@ prices with OCR and uploads them to a shared page: **https://osmsfm.duckdns.org/
 It never touches the game: no memory reading, no input, no packets. Screenshot plus OCR.
 
 - Want to contribute prices? Download the tracker from the page (one exe) and read
-  [README-znajomi.md](README-znajomi.md) (user guide).
+  [USER-GUIDE.md](USER-GUIDE.md).
 - Want to hack on it? The module docstrings describe what was measured on real screenshots
   and why each threshold is what it is; start with `shopframe.py` and `recognize.py`.
 

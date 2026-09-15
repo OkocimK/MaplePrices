@@ -1,6 +1,6 @@
 """names.py: builds a canonical scroll name from the OCR reading of the name and from the icon.
 
-We do not match whole names against a dictionary, because the osmlib dictionary (`scrolls.json`)
+We do not match whole names against a dictionary, because the osmlib scroll dictionary
 does not cover this world (it has e.g. Earring for LUK, Shield for LUK, Gun, Accuracy, "Overall"
 without "Armor"). Instead the scroll name has a rigid grammar:
 
