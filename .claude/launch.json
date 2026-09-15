@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pricetrack-replay",
+      "runtimeExecutable": "D:\\Godot\\MaplePrices\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["D:\\Godot\\MaplePrices\\tracker.py", "--replay", "D:\\Godot\\MaplePrices\\samples\\*.png", "--db", "D:\\Godot\\MaplePrices\\data\\replay.sqlite", "--serve", "--no-sync"],
+      "port": 8778
+    },
+    {
+      "name": "pricetrack-view",
+      "runtimeExecutable": "D:\\Godot\\MaplePrices\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["D:\\Godot\\MaplePrices\\tracker.py", "--view"],
+      "port": 8778
+    }
+  ]
+}

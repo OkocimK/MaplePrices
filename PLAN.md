@@ -187,7 +187,7 @@ Baza i wycinki w `data/` (poza gitem), replay do `data/replay.sqlite` z wycinkam
 `data/replay_crops/`, żywa baza to `data/prices.sqlite` i `data/prices_crops/`.
 
 ```
-D:\Godot\Maple\pricetrack\.venv\Scripts\python.exe D:\Godot\Maple\pricetrack\tracker.py
+D:\Godot\MaplePrices\.venv\Scripts\python.exe D:\Godot\MaplePrices\tracker.py
 ```
 F9 włącza/wyłącza, Ctrl+F9 kończy, podgląd na http://localhost:8778/ (może stać na drugim
 monitorze). Test offline: `tracker.py --replay "samples/*.png" --db data/replay.sqlite --serve`,
@@ -310,21 +310,17 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
   nie ma jeszcze moderacji. `MemoryCurrent` usługi ~100 MB zaraz po zasiewie (w tym cache
   plików), limit 150 MB w unicie.
 
-## Publiczne repo: https://github.com/OkocimK/MaplePrices (15 września 2026)
+## Osobny projekt open source (15 września 2026)
 
-Na GitHub idzie **sam folder `pricetrack/`**, nie całe repo Maple (kalkulator zostaje
-lokalnie). Mechanizm: `git subtree`, remote `prices`. Po commicie w repo głównym:
-
-```
-git subtree push --prefix=pricetrack prices main
-```
-
-Split jest deterministyczny względem historii głównej, więc push jest fast-forward,
-dopóki nikt nie przepisze historii `main`. Gdyby trzeba było od nowa: `git subtree split
---prefix=pricetrack -b prices-main` i `git push prices prices-main:main`. Przed pushem
-zawsze `git grep` po tokenie i IP; `deploy/` z konfiguracją hosta jest poza folderem,
-więc nie jedzie. `README.md` w folderze to strona główna repo (po angielsku),
-`README-znajomi.md` to instrukcja z zipa.
+Repo https://github.com/OkocimK/MaplePrices, licencja MIT, katalog lokalny
+`D:\Godot\MaplePrices`. Najpierw folder `pricetrack/` w repo kalkulatora wypchnięty przez
+`git subtree split` (po przepisaniu historii bez tokenu), a tego samego dnia wydzielony
+na stałe: klon GitHuba, lokalne pliki poza gitem (`data/`, `samples/`, `dist/`,
+`token.txt`) przeniesione, nowy `.venv` (stary miał ścieżki absolutne), konfiguracja
+nginksa przeniesiona z `deploy/` kalkulatora do `server/osmsfm.nginx.conf`. W repo Maple
+folder usunięty, `deploy/README.md` tam wskazuje tutaj. Zwykły `git push origin main`.
+Przed pushem `git grep` po tokenie i IP. `README.md` to strona główna repo (po angielsku),
+`README-znajomi.md` to instrukcja z zipa, `CLAUDE.md` to notatki robocze dla sesji.
 
 ## M5b, tooltip dla obciętych nazw (do zrobienia)
 
@@ -349,7 +345,7 @@ niejednoznaczna). Wymaga 3 do 5 zrzutów z `grab.py` z otwartym tooltipem nad sc
 
 Python 3.12, `mss`, `pywin32`, `opencv-python`, `numpy`, `keyboard`, `sqlite3` z biblioteki
 standardowej, opcjonalnie `pytesseract`. Viewer: HTML + CSS + JS bez frameworka, jak kalkulator.
-Katalog: `D:\Godot\Maple\pricetrack\`. Nie jedzie na serwer, `deploy.ps1` wysyła tylko pięć
+Katalog: `D:\Godot\MaplePrices\`. Nie jedzie na serwer, `deploy.ps1` wysyła tylko pięć
 plików kalkulatora, więc nic nie trzeba wykluczać.
 
 ## Zasady z reszty projektu, obowiązują też tutaj

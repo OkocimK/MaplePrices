@@ -7,7 +7,7 @@ Dane NIE jadą tędy: obserwacje wysyła każdy tracker sam przez HTTPS do odbio
     dist/osmsfm-tracker.zip (jeśli jest)      -> /var/www/osmsfm/download/   (link na stronie)
     store.py, server/ingest.py                -> /opt/osmsfm/
     server/osmsfm-ingest.service              -> /etc/systemd/system/
-    deploy/osmsfm.nginx.conf  (z --nginx)     -> /etc/nginx/sites-available/osmsfm
+    server/osmsfm.nginx.conf  (z --nginx)     -> /etc/nginx/sites-available/osmsfm
 
 Potem restartuje odbiornik i sprawdza /api/health. Token (`/etc/osmsfm/token`) zakłada
 tylko wtedy, gdy go nie ma, i wypisuje go na końcu, żeby dało się rozdać znajomym.
@@ -29,7 +29,7 @@ REMOTE = "rimhaven"
 DOMAIN = "osmsfm.duckdns.org"
 WEB = "/var/www/osmsfm"
 APP = "/opt/osmsfm"
-NGINX_CONF = HERE.parent / "deploy" / "osmsfm.nginx.conf"
+NGINX_CONF = HERE / "server" / "osmsfm.nginx.conf"
 
 
 def run(args: list[str]) -> str:
