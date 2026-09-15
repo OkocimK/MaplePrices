@@ -322,6 +322,56 @@ folder usunięty, `deploy/README.md` tam wskazuje tutaj. Zwykły `git push origi
 Przed pushem `git grep` po tokenie i IP. `README.md` to strona główna repo (po angielsku),
 `README-znajomi.md` to instrukcja z zipa, `CLAUDE.md` to notatki robocze dla sesji.
 
+## Inna wysokość klienta i przesuwalne okna UI (15 września 2026)
+
+Pierwszy znajomy z exe dostał przy każdej klatce `ValueError: klatka (1920, 1080), oczekiwana
+(1920, 1009)` i zero rozpoznań. Co się okazało:
+
+- **1009 nie jest żadną rozdzielczością gry.** To obszar roboczy monitora 1080 px (pasek zadań
+  48 px) minus belka tytułowa okna 23 px. Gra ustawiona na 1920×1080 w oknie nie mieści się na
+  monitorze 1080 px, Windows przycina okno do obszaru roboczego i klient wychodzi 1920×1009.
+  Z innym paskiem zadań, na pełnym ekranie albo na wyższym monitorze klient ma inną wysokość,
+  u znajomego 1920×1080. Próbki z `samples/` są wszystkie 1920×1009, geometria zmierzona na
+  nich jest teraz „referencyjna", a nie jedyna słuszna.
+- **Okna UI są przesuwalne**, minimapa na pewno (okno sklepu zapewne też), i minimapa ma trzy
+  stany: rozwinięta („MINI MAP", ikona, dwie linie tekstu), zwinięta do jednego paska
+  „Hidden Street : Free Market<1>" z tymi samymi przyciskami [−][+][WORLD], schowana.
+- **Skala UI przy szerokości 1920 się nie zmienia** (żywa klatka kontra próbki: przyciski,
+  minimapa, dymki co do piksela te same). Jak UI zachowuje się przy innej szerokości, nie
+  wiadomo; przy innej skali separatory nie trafią w skok 75 px i sklep nie zostanie znaleziony.
+
+Decyzje:
+
+- `shopframe.locate`: **okno sklepu jest szukane w całej klatce** po sygnaturze listy: 5
+  separatorów co 75 px, każdy to pasmo 4..5 px o jasności ≥232 z ciemną kreską (≤200) 2..3 px
+  nad nim; w kolumnach tekstu x 560..840 liczony jest udział takich kolumn, separator liczy się
+  od 0.6, wymagane 4 z 5 (kursor gry potrafi zasłonić jeden). Lewa krawędź to początek 60
+  kolumn jasnego pasma (x=475 w referencji; kreska nad pasmem zaczyna się dopiero od 481, bo
+  wcześniej jest ramka ikony). Wynik to przesunięcie (dx, dy) geometrii referencyjnej i tak są
+  przesuwane wszystkie prostokąty (`ShopFrame.box`, `shopframe.shift`). Około 120 ms na klatkę.
+  Testy: 52 próbki dają (0, 0); te same próbki wklejone do klatki 1920×1080 z przesunięciem
+  (0,35), (0,71), (100,35), (−200,0), (300,−100) są znajdowane co do piksela; klatka
+  przeskalowana do 1600 px i klatki bez sklepu dają „zamknięty".
+- `minimap.py`: **kotwicą jest przycisk WORLD** (60×18 px, ten sam w obu stanach), szukany
+  znormalizowaną korelacją szablonu przez FFT w połowie rozdzielczości i doprecyzowany w
+  pełnej (próg 0.85; na klatkach bez minimapy maksimum 0.56), a między klatkami najpierw
+  sprawdzane ostatnie miejsce. Stan po etykiecie „MINI MAP" (próg 0.8) na lewo od przycisków.
+  Prostokąt tekstu względem WORLD: rozwinięta (−110, +35)..(+68, +93), zwinięta (−357, −4)..
+  (−54, +21). **Bez minimapy mapa i kanał są None, jedna notka w logu, nie błąd.** Szablony w
+  `minimap_templates.json` (wycięte z próbki 20260912-155301-290-001 przez `minimap.py build`).
+  Test: 52 próbki „open" w referencyjnym miejscu, żywa klatka ze zwiniętym paskiem „collapsed"
+  i odczyt „Free Market<1>", minimapa wklejona w inne miejsce znajdowana, zamazana: None.
+- Tracker loguje rozmiar klienta i ostrzega przy szerokości ≠ 1920, zgłasza raz przesunięcie
+  okna sklepu, a **F10 zapisuje bieżącą klatkę do `data/debug/snap-*.png`**, żeby znajomy mógł
+  przysłać dokładnie to, co widzi tracker, zamiast opisywać.
+
+Otwarte:
+
+- Czy UI skaluje się przy innej szerokości niż 1920 (pokaże pierwszy znajomy z 2560 px).
+- `PrintWindow` zamiast `mss`: bierze zawartość okna niezależnie od tego, co je zasłania
+  (sprawdzone raz na oknie gry z flagą `PW_RENDERFULLCONTENT`, obraz pełny, nie czarny).
+  `mss` zdejmuje ekran, więc przeglądarka z podglądem albo Discord nad grą psuje klatkę.
+
 ## M5b, tooltip dla obciętych nazw (do zrobienia)
 
 Gra po najechaniu na wiersz pokazuje dymek z pełną nazwą. Kursor i tak leży na oknie.

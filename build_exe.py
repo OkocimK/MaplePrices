@@ -40,7 +40,7 @@ for m in pyds:
 winrt_pkgs = pyds
 
 if not (HERE / "token.txt").exists():
-    sys.exit("brak pricetrack/token.txt (token z /etc/osmsfm/token na serwerze, publish.py go wypisuje)")
+    sys.exit("brak token.txt (token z /etc/osmsfm/token na serwerze, publish.py go wypisuje)")
 
 cmd = [
     sys.executable, "-m", "PyInstaller",
@@ -51,6 +51,7 @@ cmd = [
     "--specpath", str(HERE / "build"),
     "--add-data", f"{HERE / 'price_glyphs.json'};.",
     "--add-data", f"{HERE / 'icon_templates.json'};.",
+    "--add-data", f"{HERE / 'minimap_templates.json'};.",
     "--add-data", f"{HERE / 'viewer.html'};.",
     "--add-data", f"{HERE / 'token.txt'};.",  # sekret poza gitem, patrz sync.py
     "--exclude-module", "cv2",  # nieużywane, a doklejałoby 60 MB

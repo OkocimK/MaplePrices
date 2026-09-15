@@ -1,9 +1,18 @@
 """shopframe.py: z klatki gry wycina wiersze okna sklepu (etap M1 z PLAN.md).
 
-Geometria jest stała, zmierzona na 52 próbkach 1920×1009 (obszar klienta okna gry):
-okno sklepu zawsze otwiera się w tym samym miejscu. Nic tu nie czyta tekstu, to robi
-recognizer; ten moduł tylko odpowiada „czy sklep jest otwarty", „które wiersze są puste",
-„które są wykupione" i oddaje wycinki nazwy, ceny i ilości.
+Geometria wnętrza okna sklepu jest stała, zmierzona na 52 próbkach 1920×1009 (obszar klienta
+okna gry), ale samo okno nie musi stać w jednym miejscu: u znajomych klient gry ma inną
+wysokość (1920×1080 na pełnym ekranie), a okna UI można przesuwać. Dlatego okno sklepu jest
+w każdej klatce lokalizowane: lista ma 5 separatorów (jasne pasma 4 px z ciemną kreską tuż
+nad nimi) co 75 px, i ta sygnatura jest szukana w całej klatce. Wynik to przesunięcie
+(dx, dy) względem geometrii referencyjnej; wszystkie prostokąty poniżej są w układzie
+referencyjnym i `ShopFrame.box` przesuwa je do klatki.
+
+Skala UI musi się zgadzać z referencją (szerokość klienta 1920 px). Przy innej skali
+separatory nie trafiają w skok 75 px i sklep nie jest wykrywany; tracker o tym uprzedza.
+
+Nic tu nie czyta tekstu, to robi recognizer; ten moduł tylko odpowiada „czy sklep jest
+otwarty", „które wiersze są puste", „które są wykupione" i oddaje wycinki nazwy, ceny i ilości.
 
 Użycie z konsoli, żeby obejrzeć wycinki ze wszystkich próbek:
 
@@ -21,7 +30,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-FRAME_W, FRAME_H = 1920, 1009
+REF_W, REF_H = 1920, 1009  # klatka referencyjna, w niej przesunięcie to (0, 0)
 
 # Pasek tytułu sklepu: „voda's Hired Merchant : S> ..." po lewej, licznik czasu po prawej.
 TITLE = (500, 176, 1330, 204)
@@ -35,6 +44,20 @@ ICON = (482, 4, 552, 72)  # względem góry wiersza: x0, dy0, x1, dy1
 NAME = (555, 3, 848, 30)
 PRICE = (582, 38, 848, 65)  # bez monety (x 555..580)
 QTY = (482, 48, 512, 72)  # cyfra ilości w lewym dolnym rogu ikony
+
+# Sygnatura separatora (zmierzona na próbkach): pasmo 4..5 px o jasności 238..255 w wierszach
+# ROW_TOP-4..ROW_TOP, nad nim 2..3 px wyżej ciemna kreska 120..190; tło wiersza pod spodem 204,
+# podświetlonego 230. Pasmo zaczyna się przy x=475 (na lewo od niego ciemny piksel ramki) i ciągnie
+# do x=862, ale ciemna kreska nad nim dopiero od x=481, bo wcześniej jest ramka ikony; dlatego do
+# wykrycia służy para pasmo+kreska w kolumnach tekstu, a do lewej krawędzi samo pasmo.
+SEP_Y = ROW_TOP - 2  # 450: wiersz, w którym na próbkach referencyjnych wszystkie 5 pasm jest „linią"
+SEP_LEFT = 475
+SEP_EVAL = (560, 840)  # kolumny, w których liczony jest udział „linii" (tekst, bez ikony i suwaka)
+SEP_BRIGHT = 232
+SEP_DARK = 200
+SEP_MIN_FRAC = 0.6  # tyle kolumn okna SEP_EVAL musi być linią, żeby separator się liczył
+SEP_MIN_HITS = ROWS - 1  # kursor gry albo ogonki liter potrafią zepsuć jeden separator
+SEP_EDGE_RUN = 60  # tyle kolejnych kolumn z jasnym pasmem zaczyna lewą krawędź listy
 
 # Kolory tekstu (RGB): aktywny ~ (42,44,46), wykupiony ~ (131,131,131).
 ACTIVE_MAX = 90  # piksel „ciemny" gdy każdy kanał poniżej
@@ -58,6 +81,17 @@ class ShopFrame:
     open: bool
     title: Image.Image | None
     rows: list[Row]
+    origin: tuple[int, int] = (0, 0)  # przesunięcie okna sklepu względem geometrii referencyjnej
+
+    def box(self, y0: int, rel: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        """Prostokąt pola wiersza (jak NAME, PRICE) w tej klatce; y0 to góra wiersza w układzie
+        referencyjnym, czyli ROW_TOP + k * ROW_PITCH."""
+        return shift(_box(y0, rel), self.origin)
+
+
+def shift(box: tuple[int, int, int, int], origin: tuple[int, int]) -> tuple[int, int, int, int]:
+    dx, dy = origin
+    return (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
 
 
 def _box(y0: int, rel: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
@@ -72,45 +106,87 @@ def _counts(a: np.ndarray) -> tuple[int, int]:
     return dark, grey
 
 
-def shop_open(a: np.ndarray) -> bool:
-    """Sklep otwarty = separatory listy stoją na swoich miejscach (jasne poziome linie)."""
-    # Tło wiersza ma jasność ~215, separator ~245, ale kursor gry albo ogonki liter potrafią
-    # ściągnąć jeden separator do ~235, więc próg jest luźny i wystarczą 4 z 5.
-    band = a[440:830, 560:840].mean(axis=(1, 2))
-    hits = 0
+def _line_mask(g: np.ndarray) -> np.ndarray:
+    """Piksel jest „linią separatora", gdy on i piksel pod nim są jasne, a 2 albo 3 px wyżej
+    jest ciemna kreska."""
+    h = g.shape[0]
+    bright = g >= SEP_BRIGHT
+    dark = g <= SEP_DARK
+    line = np.zeros_like(bright)
+    line[3 : h - 1] = bright[3 : h - 1] & bright[4:h] & (dark[1 : h - 3] | dark[0 : h - 4])
+    return line
+
+
+def locate(a: np.ndarray) -> tuple[int, int] | None:
+    """Szuka listy sklepu w całej klatce. Zwraca przesunięcie (dx, dy) geometrii referencyjnej
+    albo None, gdy sklep nie jest otwarty. Około 100 ms na klatkę 1920×1009."""
+    g = a.min(axis=2)
+    h, w = g.shape
+    span = (ROWS - 1) * ROW_PITCH + 2
+    ew = SEP_EVAL[1] - SEP_EVAL[0]
+    if h < span + 4 or w < ew + 1:
+        return None
+    line = _line_mask(g)
+    cs = np.zeros((h, w + 1), dtype=np.int32)
+    np.cumsum(line, axis=1, out=cs[:, 1:])
+    frac = (cs[:, ew:] - cs[:, :-ew]) * (1.0 / ew)  # frac[y, x]: udział linii w kolumnach x..x+ew
+    tol = frac.copy()  # tolerancja ±1 px w pionie na każdy separator z osobna
+    np.maximum(tol[1:], frac[:-1], out=tol[1:])
+    np.maximum(tol[:-1], frac[1:], out=tol[:-1])
+    n = h - span
+    hits = np.zeros((n, frac.shape[1]), dtype=np.int16)
+    exact = np.zeros((n, frac.shape[1]), dtype=np.float32)
     for k in range(ROWS):
-        s = ROW_TOP + k * ROW_PITCH - 440
-        if band[s - 1 : s + 3].max() > 230:
-            hits += 1
-    return hits >= ROWS - 1
+        sl = slice(k * ROW_PITCH, k * ROW_PITCH + n)
+        hits += tol[sl] >= SEP_MIN_FRAC
+        exact += frac[sl]
+    score = hits + exact * 0.1  # dokładne trafienie rozstrzyga remis na plateau
+    y, x = divmod(int(score.argmax()), score.shape[1])
+    if hits[y, x] < SEP_MIN_HITS:
+        return None
+    # Lewa krawędź: pierwsza kolumna, od której SEP_EDGE_RUN kolejnych kolumn ma jasne pasmo
+    # w co najmniej SEP_MIN_HITS separatorach. Okno SEP_EVAL zaczyna się 85 px za krawędzią,
+    # a udział >= 0.6 pozwala oknu leżeć do 112 px w obie strony od tego miejsca, stąd zakres.
+    cols = np.zeros(w, dtype=np.int16)
+    for k in range(ROWS):
+        yy = y + k * ROW_PITCH
+        cols += (g[max(yy - 1, 0) : yy + 3] >= SEP_BRIGHT).any(axis=0)
+    ok = np.zeros(w + 1, dtype=np.int32)
+    np.cumsum(cols >= SEP_MIN_HITS, out=ok[1:])
+    lo = max(x - 120, 0)
+    hi = min(x + 120, w - SEP_EDGE_RUN)
+    for i in range(lo, hi):
+        if ok[i + SEP_EDGE_RUN] - ok[i] == SEP_EDGE_RUN:
+            return (i - SEP_LEFT, y - SEP_Y)
+    return None
 
 
 def parse(im: Image.Image) -> ShopFrame:
-    if im.size != (FRAME_W, FRAME_H):
-        raise ValueError(f"klatka {im.size}, oczekiwana {(FRAME_W, FRAME_H)}; inna rozdzielczość gry?")
     im = im.convert("RGB")
     a = np.asarray(im)
-    if not shop_open(a):
+    origin = locate(a)
+    if origin is None:
         return ShopFrame(False, None, [])
-    rows: list[Row] = []
+    fr = ShopFrame(True, None, [], origin)
     for k in range(ROWS):
         y0 = ROW_TOP + k * ROW_PITCH
-        nb = _box(y0, NAME)
+        nb = fr.box(y0, NAME)
         dark, grey = _counts(a[nb[1] : nb[3], nb[0] : nb[2]])
         empty = dark + grey < MIN_TEXT_PX
         sold = (not empty) and grey > dark
-        rows.append(
+        fr.rows.append(
             Row(
                 index=k,
                 empty=empty,
                 sold=sold,
                 name=im.crop(nb),
-                price=im.crop(_box(y0, PRICE)),
-                qty=im.crop(_box(y0, QTY)),
-                icon=im.crop(_box(y0, ICON)),
+                price=im.crop(fr.box(y0, PRICE)),
+                qty=im.crop(fr.box(y0, QTY)),
+                icon=im.crop(fr.box(y0, ICON)),
             )
         )
-    return ShopFrame(True, im.crop(TITLE), rows)
+    fr.title = im.crop(shift(TITLE, origin))
+    return fr
 
 
 def main() -> int:
@@ -129,7 +205,7 @@ def main() -> int:
             print(f"{stem}: sklep zamknięty")
             continue
         flags = "".join("." if r.empty else ("s" if r.sold else "a") for r in fr.rows)
-        print(f"{stem}: otwarty, wiersze [{flags}]  (a=aktywny s=wykupiony .=pusty)")
+        print(f"{stem}: otwarty @{fr.origin}, wiersze [{flags}]  (a=aktywny s=wykupiony .=pusty)")
         if out:
             fr.title.save(out / f"{stem}-title.png")
             for r in fr.rows:

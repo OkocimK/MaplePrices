@@ -5,11 +5,14 @@
 
 Skróty (globalne):
     F9        włącz/wyłącz zbieranie (wyłączone = zero zrzutów)
+    F10       zapisz klatkę do data/debug/snap-*.png (diagnostyka: co widzi tracker u znajomego)
     Ctrl+F9   zakończ
 
 Co robi w pętli (co ~500 ms, tylko gdy włączone):
 1. zrzut obszaru klienta okna gry (mss), pozycja kursora z systemu (win32api),
-2. `recognize.recognize` -> obserwacje; wiersze pod kursorem i z niepewną ceną odpadają,
+2. `recognize.recognize` -> obserwacje; okno sklepu jest szukane w klatce (klient gry może mieć
+   inną wysokość niż referencyjne 1920×1009, okna UI można przesuwać), minimapa też, a bez niej
+   oferta idzie bez mapy i kanału; wiersze pod kursorem i z niepewną ceną odpadają,
 3. deduplikacja: ta sama (właściciel, nazwa, cena, wykupiony) w ciągu 10 minut = ta sama
    oferta, nie dopisujemy; po dłuższym czasie to nowa obserwacja,
 4. zapis do `data/prices.sqlite`, wycinek wiersza do `data/crops/<id>.png` (do audytu).
@@ -47,6 +50,7 @@ from store import DATA, DB, Store
 from paths import RES_DIR as HERE  # viewer.html leży w zasobach, także w exe
 PORT = 8778
 TOGGLE_KEY = "f9"
+SNAP_KEY = "f10"
 QUIT_KEY = "ctrl+f9"
 PERIOD = 0.5
 
@@ -61,6 +65,8 @@ class State:
         self.lock = threading.Lock()
         self.last_owner: str | None = None
         self.client: str | None = None  # nick zbierającego, podpis wierszy
+        self.minimap_seen: bool | None = None  # żeby o schowanej minimapie powiedzieć raz, nie przy każdym sklepie
+        self.origins: set[tuple[int, int]] = set()  # przesunięcia okna sklepu już zgłoszone w logu
         # Wysyłka na serwer (sync.py) chodzi w tle: co SYNC_MIN podczas zbierania,
         # gdy przybyły nowe oferty, i zaraz po wyłączeniu zbierania. Naraz najwyżej jedna.
         self.published_added = 0  # ile ofert było w bazie przy ostatniej udanej publikacji
@@ -182,18 +188,27 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
     if r.owner != state.last_owner:
         state.shops += 1
         state.last_owner = r.owner
-        state.note(f"shop: {r.owner} ({r.map}<{r.channel}>)" + (f", {r.skipped_cursor} rows under cursor" if r.skipped_cursor else ""))
+        where = f" ({r.map}<{r.channel}>)" if r.map else ""
+        state.note(f"shop: {r.owner}{where}" + (f", {r.skipped_cursor} rows under cursor" if r.skipped_cursor else ""))
         state.pending.clear()
-        if r.channel is None or r.ttl_min is None:
+        if r.origin != (0, 0) and r.origin not in state.origins:
+            state.origins.add(r.origin)
+            state.note(f"shop window found {r.origin[0]:+d},{r.origin[1]:+d} px from the reference layout")
+        seen = r.minimap is not None
+        if seen != state.minimap_seen:
+            state.minimap_seen = seen
+            if not seen:
+                state.note("minimap not visible: offers are stored without map and channel")
+        if (seen and r.channel is None) or r.ttl_min is None:
             # nieczytelna minimapa albo licznik: odłóż wycinki do obejrzenia
             dbg = DATA / "debug"
-            dbg.mkdir(exist_ok=True)
+            dbg.mkdir(parents=True, exist_ok=True)
             stamp = now.strftime("%H%M%S")
-            if r.channel is None:
-                frame.crop(recognize.MINIMAP).save(dbg / f"{stamp}-minimap.png")
-                state.note(f"channel unreadable: {r.map_raw!r}")
+            if seen and r.channel is None:
+                frame.crop(r.minimap_box).save(dbg / f"{stamp}-minimap.png")
+                state.note(f"channel unreadable ({r.minimap} minimap): {r.map_raw!r}")
             if r.ttl_min is None:
-                frame.crop(recognize.sf.TIMER).save(dbg / f"{stamp}-timer.png")
+                frame.crop(recognize.sf.shift(recognize.sf.TIMER, r.origin)).save(dbg / f"{stamp}-timer.png")
                 state.note(f"shop timer unreadable: {r.timer_raw!r}")
     if r.stale_icons:
         state.stale += 1
@@ -301,7 +316,14 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
             input("Press Enter to close.")  # exe z dwukliku: okno konsoli zniknęłoby zanim ktoś przeczyta
         sys.exit(1)
     state.note(f"game window: {win32gui.GetWindowText(hwnd)!r}")
-    sct = (getattr(mss, "MSS", None) or mss.mss)()
+    rect = grab.client_rect(hwnd)
+    state.note(f"game client area: {rect['width']}x{rect['height']}"
+               + ("" if rect["height"] == recognize.sf.REF_H else f" (reference {recognize.sf.REF_W}x{recognize.sf.REF_H}, the shop window is located in the frame)"))
+    if rect["width"] != recognize.sf.REF_W:
+        state.note(f"warning: the tracker is tuned for a {recognize.sf.REF_W} px wide game window; at {rect['width']} px "
+                   f"the shop window will probably not be recognised. Press {SNAP_KEY.upper()} with a shop open and send the saved frame.")
+    MSS = getattr(mss, "MSS", None) or mss.mss
+    sct = MSS()
 
     pub = Uploader(store, state, cfg)
 
@@ -311,11 +333,27 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
         if not state.on and auto_sync and state.added != state.published_added:
             pub.start("after collecting stopped")
 
+    def snap() -> None:
+        """Klatka do diagnostyki: co dokładnie widzi tracker (inna rozdzielczość, przesunięte okna)."""
+        if not win32gui.IsWindow(hwnd):
+            return
+        r = grab.client_rect(hwnd)
+        if r["width"] <= 0 or r["height"] <= 0:
+            return
+        with MSS() as s:  # własna instancja: skrót działa w wątku keyboard, a mss nie jest wspólne między wątkami
+            shot = s.grab(r)
+        dbg = DATA / "debug"
+        dbg.mkdir(parents=True, exist_ok=True)
+        path = dbg / f"snap-{datetime.now():%Y%m%d-%H%M%S}.png"
+        Image.frombytes("RGB", shot.size, shot.rgb).save(path)
+        state.note(f"frame saved: {path} ({shot.size[0]}x{shot.size[1]})")
+
     keyboard.add_hotkey(TOGGLE_KEY, toggle)
+    keyboard.add_hotkey(SNAP_KEY, snap)
     stop = threading.Event()
     keyboard.add_hotkey(QUIT_KEY, stop.set)
     srv = serve(store, state, toggle, lambda: pub.start("on request"))
-    state.note(f"preview: http://localhost:{PORT}/   [{TOGGLE_KEY.upper()}] on/off  [{QUIT_KEY.upper()}] quit"
+    state.note(f"preview: http://localhost:{PORT}/   [{TOGGLE_KEY.upper()}] on/off  [{SNAP_KEY.upper()}] save frame  [{QUIT_KEY.upper()}] quit"
                + (f"   uploading to {cfg['server']} as {client}" if auto_sync else "   upload to server: disabled"))
     last_hash = None
     if start_on:

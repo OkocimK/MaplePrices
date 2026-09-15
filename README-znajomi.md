@@ -8,7 +8,9 @@ reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 ## Usage
 
 1. Put `osmsfm-tracker.exe` in any folder (a `data\` folder with a local copy appears next to it).
-2. Run the game **in a window** (not full screen) at **1920x1080**. Other resolutions are not recognised.
+2. Run the game at **1920x1080**, windowed or full screen. The game window must be 1920 px wide;
+   other widths are not recognised. The minimap can be moved, collapsed or hidden (without it
+   offers are stored without map and channel).
 3. Run the exe. Windows SmartScreen may warn about an unknown publisher the first time:
    "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.
    Antivirus software is sometimes suspicious of PyInstaller executables, that is all it is.
@@ -16,6 +18,8 @@ reading, no clicking, no packets. Screenshot plus OCR, nothing else.
    The cursor may rest on the shop window; the row under it is skipped and picked up in the
    next frame.
 5. **Ctrl+F9** quits. Live preview: http://localhost:8778/ in your browser.
+6. If the console keeps saying 0 shops while you browse them, press **F10** with a shop open:
+   it saves what the tracker sees to `data\debug\snap-*.png`. Send that file.
 
 Nothing to type in: the server address and key are built in. Uploads are anonymous: the
 program picks a random id like `anon-3f9c2a` and signs its uploads with it. If you want to

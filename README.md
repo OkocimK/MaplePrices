@@ -16,7 +16,8 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 | File | What |
 |---|---|
 | `tracker.py` | main loop: capture, recognise, store, local preview on :8778, background upload |
-| `shopframe.py` | fixed geometry of the shop window, empty/sold rows |
+| `shopframe.py` | shop window geometry: finds the list in the frame (any client height, movable window), empty/sold rows |
+| `minimap.py`, `minimap_templates.json` | finds the minimap (movable, collapsed or hidden) to read map and channel |
 | `glyphs.py`, `price_glyphs.json` | price digits by template matching (Windows OCR drops numbers) |
 | `names.py`, `icons.py`, `icon_templates.json` | scroll name grammar, percent from icon colour |
 | `recognize.py` | one frame in, observations out (cursor and stale-icon guards) |
@@ -36,4 +37,5 @@ py -3.12 -m venv .venv
 .venv\Scripts\python make_dist.py
 ```
 
-Requires Windows (Windows OCR, win32 capture). Game must run windowed at 1920x1080.
+Requires Windows (Windows OCR, win32 capture). The game window must be 1920 px wide
+(1920x1080 windowed or full screen); the UI scale at other widths is untested.
