@@ -143,7 +143,7 @@ def make_handler(store: Store, state: State, on_toggle, on_sync=lambda: False):
                 self._json(state.snapshot())
             elif u.path == "/api/delete" and q.get("id", [""])[0].isdigit():
                 store.delete(int(q["id"][0]))
-                state.note(f"usunięto obserwację {q['id'][0]}")
+                state.note(f"deleted observation {q['id'][0]}")
                 self._json({"ok": True})
             else:
                 self.send_error(404)
@@ -168,7 +168,7 @@ def commit(r: recognize.Result, obs: list[recognize.Obs], store: Store, state: S
     new = store.add(sub, now, state.client)
     if new:
         state.added += len(new)
-        state.note(f"+{len(new)} nowych ofert u {r.owner}")
+        state.note(f"+{len(new)} new offers at {r.owner}")
 
 
 def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, state: State, now: datetime,
@@ -182,7 +182,7 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
     if r.owner != state.last_owner:
         state.shops += 1
         state.last_owner = r.owner
-        state.note(f"sklep: {r.owner} ({r.map}<{r.channel}>)" + (f", kursor zasłania {r.skipped_cursor}" if r.skipped_cursor else ""))
+        state.note(f"shop: {r.owner} ({r.map}<{r.channel}>)" + (f", {r.skipped_cursor} rows under cursor" if r.skipped_cursor else ""))
         state.pending.clear()
         if r.channel is None or r.ttl_min is None:
             # nieczytelna minimapa albo licznik: odłóż wycinki do obejrzenia
@@ -191,14 +191,14 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
             stamp = now.strftime("%H%M%S")
             if r.channel is None:
                 frame.crop(recognize.MINIMAP).save(dbg / f"{stamp}-minimap.png")
-                state.note(f"kanał nieczytelny: {r.map_raw!r}")
+                state.note(f"channel unreadable: {r.map_raw!r}")
             if r.ttl_min is None:
                 frame.crop(recognize.sf.TIMER).save(dbg / f"{stamp}-timer.png")
-                state.note(f"licznik nieczytelny: {r.timer_raw!r}")
+                state.note(f"shop timer unreadable: {r.timer_raw!r}")
     if r.stale_icons:
         state.stale += 1
         if r.skipped_stale:
-            state.note(f"nieświeże ikony u {r.owner}, odłożone {r.skipped_stale} wierszy do następnej klatki")
+            state.note(f"stale icons at {r.owner}, {r.skipped_stale} rows deferred to the next frame")
     if not confirm:
         commit(r, r.obs, store, state, now)
         return
@@ -217,12 +217,12 @@ def process_same(store: Store, state: State, now: datetime) -> None:
 
 def replay(pattern: str, store: Store, state: State) -> None:
     files = sorted(glob.glob(pattern))
-    state.note(f"replay {len(files)} klatek")
+    state.note(f"replay of {len(files)} frames")
     t = datetime.now()
     for f in files:
         process(Image.open(f), None, store, state, t, confirm=False)  # próbki to pojedyncze klatki
         t += timedelta(seconds=1)
-    state.note(f"replay koniec: {state.shops} sklepów, {state.added} obserwacji")
+    state.note(f"replay done: {state.shops} shops, {state.added} observations")
 
 
 SYNC_MIN = 5  # co tyle minut wysyłka w tle podczas zbierania, jeśli coś przybyło
@@ -265,7 +265,7 @@ class Uploader:
 
         s = self.state
         target = s.added
-        s.note(f"wysyłka na serwer ({reason})...")
+        s.note(f"uploading to server ({reason})...")
         try:
             sync.push(self.store, self.cfg, log=s.note)
             s.published_added = target
@@ -273,7 +273,7 @@ class Uploader:
             s.publish_error = None
         except Exception as e:  # brak sieci, zły token: zapis lokalny jest bezpieczny, spróbujemy później
             s.publish_error = str(e).splitlines()[0]
-            s.note(f"wysyłka nie przeszła: {s.publish_error}")
+            s.note(f"upload failed: {s.publish_error}")
         finally:
             self._last = time.time()
             s.publishing = False
@@ -296,27 +296,27 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
     grab.set_dpi_aware()
     hwnd = grab.find_window(title)
     if hwnd is None:
-        print(f"Nie znalazłem okna gry (z '{title}' w tytule). Uruchom grę w oknie i spróbuj jeszcze raz.")
+        print(f"Game window not found (title containing '{title}'). Run the game in a window and try again.")
         if getattr(sys, "frozen", False):
-            input("Enter zamyka.")  # exe z dwukliku: okno konsoli zniknęłoby zanim ktoś przeczyta
+            input("Press Enter to close.")  # exe z dwukliku: okno konsoli zniknęłoby zanim ktoś przeczyta
         sys.exit(1)
-    state.note(f"okno gry: {win32gui.GetWindowText(hwnd)!r}")
+    state.note(f"game window: {win32gui.GetWindowText(hwnd)!r}")
     sct = (getattr(mss, "MSS", None) or mss.mss)()
 
     pub = Uploader(store, state, cfg)
 
     def toggle() -> None:
         state.on = not state.on
-        state.note("zbieranie WŁĄCZONE" if state.on else "zbieranie wyłączone")
+        state.note("collecting ON" if state.on else "collecting off")
         if not state.on and auto_sync and state.added != state.published_added:
-            pub.start("po wyłączeniu zbierania")
+            pub.start("after collecting stopped")
 
     keyboard.add_hotkey(TOGGLE_KEY, toggle)
     stop = threading.Event()
     keyboard.add_hotkey(QUIT_KEY, stop.set)
-    srv = serve(store, state, toggle, lambda: pub.start("na żądanie"))
-    state.note(f"podgląd: http://localhost:{PORT}/   [{TOGGLE_KEY.upper()}] on/off  [{QUIT_KEY.upper()}] koniec"
-               + (f"   wysyłka na {cfg['server']} jako {client}" if auto_sync else "   wysyłka na serwer: wyłączona"))
+    srv = serve(store, state, toggle, lambda: pub.start("on request"))
+    state.note(f"preview: http://localhost:{PORT}/   [{TOGGLE_KEY.upper()}] on/off  [{QUIT_KEY.upper()}] quit"
+               + (f"   uploading to {cfg['server']} as {client}" if auto_sync else "   upload to server: disabled"))
     last_hash = None
     if start_on:
         toggle()
@@ -344,30 +344,30 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
                 else:
                     process_same(store, state, datetime.now())
             except Exception as e:  # jedna zła klatka nie ma zabijać pętli
-                state.note(f"błąd klatki: {type(e).__name__}: {e}")
+                state.note(f"frame error: {type(e).__name__}: {e}")
             if auto_sync and pub.due(time.time()):
-                pub.start(f"co {SYNC_MIN} min")
+                pub.start(f"every {SYNC_MIN} min")
             time.sleep(max(0.0, PERIOD - (time.time() - t0)))
     finally:
         keyboard.unhook_all()
         sct.close()
         if auto_sync and state.added != state.published_added:
-            pub.start("na koniec")
+            pub.start("at exit")
         pub.wait(600)  # ostatnia publikacja ma dojść, zanim proces zniknie
         srv.shutdown()
-    state.note(f"koniec: {state.frames} klatek rozpoznanych, {state.shops} sklepów, {state.added} nowych ofert")
+    state.note(f"done: {state.frames} frames recognised, {state.shops} shops, {state.added} new offers")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--title", default="MapleStory", help="fragment tytułu okna gry")
-    ap.add_argument("--replay", help="glob klatek PNG zamiast gry (test offline)")
-    ap.add_argument("--db", default=str(DB), help="ścieżka bazy (domyślnie data/prices.sqlite)")
-    ap.add_argument("--serve", action="store_true", help="przy --replay zostaw HTTP włączony do obejrzenia")
-    ap.add_argument("--view", action="store_true", help="sam podgląd bazy w przeglądarce, bez zrzutów i bez gry")
-    ap.add_argument("--on", action="store_true", help="startuj z włączonym zbieraniem (bez F9)")
-    ap.add_argument("--seconds", type=float, help="zakończ po N sekundach (test)")
-    ap.add_argument("--no-sync", action="store_true", help="nie wysyłaj na serwer (tylko lokalna baza)")
+    ap.add_argument("--title", default="MapleStory", help="part of the game window title")
+    ap.add_argument("--replay", help="glob of PNG frames instead of the game (offline test)")
+    ap.add_argument("--db", default=str(DB), help="database path (default data/prices.sqlite)")
+    ap.add_argument("--serve", action="store_true", help="with --replay keep the HTTP preview running")
+    ap.add_argument("--view", action="store_true", help="preview the database only, no capture, no game")
+    ap.add_argument("--on", action="store_true", help="start with collecting on (no F9 needed)")
+    ap.add_argument("--seconds", type=float, help="quit after N seconds (test)")
+    ap.add_argument("--no-sync", action="store_true", help="do not upload to the server (local database only)")
     args = ap.parse_args()
     store = Store(Path(args.db))
     state = State()
@@ -377,7 +377,7 @@ def main() -> int:
         if args.serve or args.view:
             state.on = False
             serve(store, state, lambda: None)
-            print(f"http://localhost:{PORT}/  (Ctrl+C kończy)")
+            print(f"http://localhost:{PORT}/  (Ctrl+C quits)")
             try:
                 while True:
                     time.sleep(1)

@@ -75,10 +75,10 @@ def load_config() -> dict:
 def setup(defaults: dict | None = None) -> dict:
     """Ręczna zmiana ustawień (`sync.py --setup`); zwykły start nie pyta o nic."""
     d = defaults or load_config()
-    print("Ustawienia wysyłki na serwer (Enter zostawia wartość w nawiasie).")
-    server = input(f"  adres serwera [{d['server']}]: ").strip() or d["server"]
+    print("Upload settings (Enter keeps the value in brackets).")
+    server = input(f"  server address [{d['server']}]: ").strip() or d["server"]
     token = input(f"  token [{d['token']}]: ").strip() or d["token"]
-    client = input(f"  nick (podpis danych) [{d['client']}]: ").strip() or d["client"]
+    client = input(f"  client id or nickname [{d['client']}]: ").strip() or d["client"]
     c = {"server": server.rstrip("/"), "token": token, "client": client}
     DATA.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -119,10 +119,10 @@ def _post(cfg: dict, payload: dict) -> dict:
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:200]
         if e.code == 401:
-            raise SyncError("serwer odrzucił token (401); sprawdź data/config.json") from None
-        raise SyncError(f"serwer odpowiedział {e.code}: {detail}") from None
+            raise SyncError("server rejected the token (401); check data/config.json") from None
+        raise SyncError(f"server responded {e.code}: {detail}") from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise SyncError(f"brak połączenia z {cfg['server']}: {e}") from None
+        raise SyncError(f"cannot reach {cfg['server']}: {e}") from None
 
 
 def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
@@ -146,7 +146,7 @@ def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
         sent += len(rows)
         accepted += int(res.get("accepted", 0))
     if sent:
-        log(f"wysłano {sent} wierszy, serwer przyjął {accepted} nowych (reszta to duplikaty)")
+        log(f"sent {sent} rows, server accepted {accepted} new (the rest were duplicates)")
     return sent, accepted
 
 

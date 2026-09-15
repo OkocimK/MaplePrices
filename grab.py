@@ -63,7 +63,7 @@ def find_window(fragment: str) -> int | None:
     if not hits:
         return None
     if len(hits) > 1:
-        print(f"Kilka okien pasuje do '{fragment}', biorę pierwsze:")
+        print(f"Several windows match '{fragment}', taking the first:")
         for h, t in hits:
             print(f"   {h:>8}  {t}")
     return hits[0][0]

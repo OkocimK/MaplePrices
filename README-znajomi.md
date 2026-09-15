@@ -29,7 +29,3 @@ network connection it stays in `data\` and goes out next time.
 Item name, price, whether the offer is sold out (greyed), the shop owner's name, shop title,
 map and channel, the shop's remaining time, a small crop of the row (image) to verify the
 reading, and the random id of the program. Nothing about your character, account or chat.
-
-## Note
-
-The console messages of the tracker are in Polish. The web page is in English.
