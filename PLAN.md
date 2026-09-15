@@ -297,8 +297,11 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
   powstaje sam z losowym identyfikatorem `anon-xxxxxx` (nie z `%USERNAME%`: użytkownicy
   mają zostać anonimowi, a nazwa konta Windows bywa imieniem i nazwiskiem). Repo nie ma zdalnego remote, więc token w kodzie
   nie wycieka przez gita; gdyby remote się pojawił, najpierw wynieść token z historii.
-  Zmiana tokenu = nowy exe dla wszystkich. Bez podpisu kodu SmartScreen ostrzega przy
-  pierwszym uruchomieniu, README o tym mówi.
+  Zmiana tokenu = nowy exe dla wszystkich. **Bez podpisu kodu, decyzja z 15 września 2026**:
+  self-signed nic nie daje u innych (musieliby zainstalować nasz root), kupiony certyfikat
+  (Certum OSS od 25 EUR, wymaga publicznego repo) i tak startuje z zerową reputacją
+  SmartScreen, EV od 2024 też nie omija, Azure Trusted Signing dla osób prywatnych tylko
+  w USA i Kanadzie. Dla grupy znajomych ostrzeżenie to jeden klik, README o tym mówi.
 - Zasiew: lokalna baza z sesji 2 (3650 wierszy) wysłana przez `sync.py` w 46 s.
 - Lokalny viewer (:8778) dalej pokazuje lokalną bazę; „usuń" działa tylko lokalnie, serwer
   nie ma jeszcze moderacji. `MemoryCurrent` usługi ~100 MB zaraz po zasiewie (w tym cache
