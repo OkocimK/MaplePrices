@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from paths import RES_DIR
 from store import DATA, DB, Store
 
 CONFIG = DATA / "config.json"
@@ -34,10 +35,12 @@ STATE = DATA / "sync.json"
 BATCH = 150
 TIMEOUT = 120
 
-# Wspólny token dla trackerów znajomych. Siedzi też w /etc/osmsfm/token na serwerze;
-# nowy: usunąć tamten plik, publish.py założy inny, wpisać tutaj i zbudować exe od nowa.
+# Wspólny token dla trackerów znajomych leży w `token.txt` obok źródeł (poza gitem, repo jest
+# publiczne) i jest wbudowywany w exe przez build_exe.py. Ten sam siedzi w /etc/osmsfm/token
+# na serwerze; nowy: usunąć tamten plik, publish.py założy inny, wpisać tutaj, zbudować exe.
 DEFAULT_SERVER = "https://osmsfm.duckdns.org"
-DEFAULT_TOKEN = "TOKEN-REMOVED"
+_TOKEN_FILE = RES_DIR / "token.txt"
+DEFAULT_TOKEN = _TOKEN_FILE.read_text(encoding="utf-8").strip() if _TOKEN_FILE.exists() else ""
 
 
 class SyncError(RuntimeError):
@@ -66,6 +69,8 @@ def load_config() -> dict:
             c[k] = v if v is not None else _default_client()
             changed = True
     c["server"] = c["server"].rstrip("/")
+    if not c["token"]:
+        raise SyncError("no upload token: put it in token.txt next to the sources (build) or in data/config.json")
     if changed:
         DATA.mkdir(parents=True, exist_ok=True)
         CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
