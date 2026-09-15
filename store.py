@@ -17,8 +17,8 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-DATA = HERE / "data"
+from paths import DATA_DIR as DATA
+
 DB = DATA / "prices.sqlite"  # wycinki lądują obok, w data/prices_crops/
 DEDUP_MINUTES = 10
 DEFAULT_TTL_H = 24  # gdy licznik sklepu był nieczytelny: tyle godzin oferta liczy się jako aktualna

@@ -4,4 +4,3 @@ keyboard
 numpy
 pillow
 winocr
-opencv-python

@@ -44,7 +44,7 @@ from PIL import Image
 import recognize
 from store import DATA, DB, Store
 
-HERE = Path(__file__).resolve().parent
+from paths import RES_DIR as HERE  # viewer.html leży w zasobach, także w exe
 PORT = 8778
 TOGGLE_KEY = "f9"
 QUIT_KEY = "ctrl+f9"
@@ -283,9 +283,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
          auto_sync: bool = True) -> None:
     import sync
 
-    cfg = sync.load_config() if auto_sync else None
-    if auto_sync and cfg is None:
-        cfg = sync.setup()  # pierwszy start u znajomego: adres serwera, token, nick
+    cfg = sync.load_config() if auto_sync else None  # bez pytań: serwer i token wpisane na sztywno
     client = cfg["client"] if cfg else None
     state.client = client
     import keyboard
@@ -298,7 +296,9 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
     grab.set_dpi_aware()
     hwnd = grab.find_window(title)
     if hwnd is None:
-        print(f"Nie znalazłem okna z '{title}' w tytule. grab.py --list pokaże, co jest.")
+        print(f"Nie znalazłem okna gry (z '{title}' w tytule). Uruchom grę w oknie i spróbuj jeszcze raz.")
+        if getattr(sys, "frozen", False):
+            input("Enter zamyka.")  # exe z dwukliku: okno konsoli zniknęłoby zanim ktoś przeczyta
         sys.exit(1)
     state.note(f"okno gry: {win32gui.GetWindowText(hwnd)!r}")
     sct = (getattr(mss, "MSS", None) or mss.mss)()

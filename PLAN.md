@@ -283,10 +283,21 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
 - `publish.py` wgrywa już tylko kod serwera, unit, `index.html` i (z `--nginx`) konfigurację;
   zakłada token w `/etc/osmsfm/token`, gdy go nie ma, i wypisuje go. Baza serwera:
   `/var/lib/osmsfm/prices.sqlite`.
-- Paczka dla znajomych: `make_dist.py` -> `dist/osmsfm-tracker.zip` (kod, wzorce, viewer,
-  `install.bat`, `run.bat`, `README-znajomi.md`). Pierwszy `run.bat` pyta o token i nick.
-  Wymaga Pythona 3.12 z python.org; exe przez PyInstaller to opcja na później, winocr
-  i pywin32 pakują się kapryśnie.
+- **Paczka dla znajomych to jeden plik exe** (15 września 2026): `build_exe.py` (PyInstaller,
+  onefile, konsola) -> `dist/osmsfm-tracker.exe`, 28,9 MB; `make_dist.py` pakuje go z README
+  do `dist/osmsfm-tracker.zip`. Start 3 do 5 s (rozpakowanie). Pułapki obejścia:
+  - winrt: każda dystrybucja `winrt-Windows.*` wrzuca jeden `.pyd` do wspólnego pakietu
+    `winrt`, ładowany po nazwie, więc `--collect-all winrt` plus `--hidden-import` na każdy
+    `winrt._winrt_*`; `build_exe.py` wykrywa je z metadanych pakietów,
+  - ścieżki przez `paths.py`: `RES_DIR` (zasoby w `sys._MEIPASS`, tylko odczyt: wzorce,
+    viewer.html) i `APP_DIR` (katalog obok exe, tam `data/`),
+  - `--exclude-module cv2` (nieużywane, doklejało 44 MB), tkinter, onnxruntime.
+  **Adres serwera i token są wpisane na sztywno** w `sync.py` (`DEFAULT_SERVER`,
+  `DEFAULT_TOKEN`), na prośbę użytkownika: znajomy nic nie wpisuje, `data/config.json`
+  powstaje sam z nickiem z `%USERNAME%`. Repo nie ma zdalnego remote, więc token w kodzie
+  nie wycieka przez gita; gdyby remote się pojawił, najpierw wynieść token z historii.
+  Zmiana tokenu = nowy exe dla wszystkich. Bez podpisu kodu SmartScreen ostrzega przy
+  pierwszym uruchomieniu, README o tym mówi.
 - Zasiew: lokalna baza z sesji 2 (3650 wierszy) wysłana przez `sync.py` w 46 s.
 - Lokalny viewer (:8778) dalej pokazuje lokalną bazę; „usuń" działa tylko lokalnie, serwer
   nie ma jeszcze moderacji. `MemoryCurrent` usługi ~100 MB zaraz po zasiewie (w tym cache

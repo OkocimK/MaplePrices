@@ -23,8 +23,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-HERE = Path(__file__).resolve().parent
-TEMPLATE_FILE = HERE / "icon_templates.json"
+from paths import RES_DIR
+
+TEMPLATE_FILE = RES_DIR / "icon_templates.json"
 ICON_IN_CROP = (0, 4, 70, 72)  # ikona wewnątrz wycinka wiersza zapisanego przez tracker
 SIZE = (35, 34)  # wzorzec w połowie rozdzielczości, wystarcza i mniej waży
 MIN_SCORE = 0.80

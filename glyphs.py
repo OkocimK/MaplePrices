@@ -23,8 +23,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-HERE = Path(__file__).resolve().parent
-GLYPH_FILE = HERE / "price_glyphs.json"
+from paths import RES_DIR
+
+GLYPH_FILE = RES_DIR / "price_glyphs.json"
 TEMPLATE_H = 24  # wysokość wspólnego pudełka wzorca (glify wyrównane do dolnej linii)
 TEMPLATE_W = 14
 SPACE_GAP = 5  # tyle kolumn tła oddziela liczbę od „mesos"

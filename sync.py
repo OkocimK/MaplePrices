@@ -1,8 +1,11 @@
 """sync.py: wysyłka obserwacji z lokalnej bazy do odbiornika na serwerze (server/ingest.py).
 
-Konfiguracja w `data/config.json`:
+Adres serwera i token są wpisane na sztywno (DEFAULT_SERVER, DEFAULT_TOKEN), żeby znajomy
+po uruchomieniu exe nie musiał nic wpisywać. Przy pierwszym starcie powstaje
+`data/config.json` z tymi wartościami i nickiem z nazwy użytkownika Windows:
     {"server": "https://osmsfm.duckdns.org", "token": "<wspólny sekret>", "client": "<nick>"}
-Postęp w `data/sync.json`: {"last_id": N}, czyli do którego lokalnego id wszystko już poszło.
+Kto chce inny nick, edytuje ten plik. Postęp w `data/sync.json`: {"last_id": N}, czyli do
+którego lokalnego id wszystko już poszło.
 
 Wiersze idą paczkami po BATCH, każdy z wycinkiem jako PNG w base64 (paleta 128 kolorów,
 ~16 KB). Serwer deduplikuje sam, więc ponowne wysłanie tej samej paczki po zerwanym
@@ -18,6 +21,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -30,29 +34,54 @@ STATE = DATA / "sync.json"
 BATCH = 150
 TIMEOUT = 120
 
+# Wspólny token dla trackerów znajomych. Siedzi też w /etc/osmsfm/token na serwerze;
+# nowy: usunąć tamten plik, publish.py założy inny, wpisać tutaj i zbudować exe od nowa.
+DEFAULT_SERVER = "https://osmsfm.duckdns.org"
+DEFAULT_TOKEN = "TOKEN-REMOVED"
+
 
 class SyncError(RuntimeError):
     pass
 
 
-def load_config() -> dict | None:
-    if not CONFIG.exists():
-        return None
-    c = json.loads(CONFIG.read_text(encoding="utf-8"))
-    if not all(c.get(k) for k in ("server", "token", "client")):
-        return None
+def _default_client() -> str:
+    for k in ("USERNAME", "USER"):
+        v = os.environ.get(k, "").strip()
+        if v:
+            return v[:40]
+    return "anon"
+
+
+def load_config() -> dict:
+    """Czyta `data/config.json`, a gdy go nie ma albo jest niepełny, dopisuje brakujące pola
+    z wartości domyślnych i zapisuje. Nigdy nie pyta."""
+    c: dict = {}
+    if CONFIG.exists():
+        try:
+            c = json.loads(CONFIG.read_text(encoding="utf-8"))
+        except ValueError:
+            c = {}
+    changed = False
+    for k, v in (("server", DEFAULT_SERVER), ("token", DEFAULT_TOKEN), ("client", None)):
+        if not c.get(k):
+            c[k] = v if v is not None else _default_client()
+            changed = True
     c["server"] = c["server"].rstrip("/")
+    if changed:
+        DATA.mkdir(parents=True, exist_ok=True)
+        CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
     return c
 
 
 def setup(defaults: dict | None = None) -> dict:
-    d = defaults or {}
-    print("Konfiguracja wysyłki na serwer (Enter zostawia wartość w nawiasie).")
-    server = input(f"  adres serwera [{d.get('server', 'https://osmsfm.duckdns.org')}]: ").strip() or d.get("server", "https://osmsfm.duckdns.org")
-    token = input(f"  token [{d.get('token', '')}]: ").strip() or d.get("token", "")
-    client = input(f"  twój nick (podpis danych) [{d.get('client', '')}]: ").strip() or d.get("client", "")
+    """Ręczna zmiana ustawień (`sync.py --setup`); zwykły start nie pyta o nic."""
+    d = defaults or load_config()
+    print("Ustawienia wysyłki na serwer (Enter zostawia wartość w nawiasie).")
+    server = input(f"  adres serwera [{d['server']}]: ").strip() or d["server"]
+    token = input(f"  token [{d['token']}]: ").strip() or d["token"]
+    client = input(f"  nick (podpis danych) [{d['client']}]: ").strip() or d["client"]
     c = {"server": server.rstrip("/"), "token": token, "client": client}
-    DATA.mkdir(exist_ok=True)
+    DATA.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
     return c
 
@@ -124,11 +153,9 @@ def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
 
 def main() -> int:
     if "--setup" in sys.argv:
-        setup(load_config())
+        setup()
         return 0
     cfg = load_config()
-    if cfg is None:
-        cfg = setup()
     try:
         push(Store(DB), cfg)
     except SyncError as e:

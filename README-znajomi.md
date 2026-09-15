@@ -1,26 +1,25 @@
 # Tracker cen scrolli (Old School Maple)
 
-Program robi zrzuty okna gry, gdy przeglądasz sklepiki na FM, odczytuje z nich nazwy i ceny
-i wysyła je na wspólną stronę https://osmsfm.duckdns.org/. Nie dotyka gry: nie czyta jej
-pamięci, nie klika, nie wysyła pakietów. To tylko zrzut ekranu i OCR.
-
-## Instalacja (raz)
-
-1. Zainstaluj Pythona 3.12 z https://www.python.org/downloads/ (zaznacz „Add python.exe to PATH").
-2. Rozpakuj ten folder gdziekolwiek, uruchom `install.bat`, poczekaj.
+Jeden plik: `osmsfm-tracker.exe`. Robi zrzuty okna gry, gdy przeglądasz sklepiki na FM,
+odczytuje z nich nazwy i ceny i wysyła na wspólną stronę https://osmsfm.duckdns.org/.
+Nie dotyka gry: nie czyta jej pamięci, nie klika, nie wysyła pakietów. Zrzut ekranu i OCR.
 
 ## Użycie
 
-1. Gra w oknie (nie pełny ekran), rozdzielczość 1920×1080. Przy innej program nic nie odczyta.
-2. Uruchom `run.bat`. Przy pierwszym starcie poda adres serwera i zapyta o **token** (dostaniesz
-   od właściciela strony) i **nick** (podpis Twoich danych).
-3. **F9** włącza zbieranie, drugi raz **F9** wyłącza. Włączaj tylko wtedy, gdy przeklikujesz
+1. Wrzuć `osmsfm-tracker.exe` do dowolnego folderu (obok powstanie `data\` z lokalną kopią).
+2. Gra w oknie (nie pełny ekran), rozdzielczość 1920×1080. Przy innej program nic nie odczyta.
+3. Uruchom exe. Windows przy pierwszym razie może pokazać SmartScreen („nieznany wydawca"):
+   „Więcej informacji", „Uruchom mimo to". Antywirus też bywa czujny na PyInstallera.
+4. **F9** włącza zbieranie, drugi raz **F9** wyłącza. Włączaj tylko, gdy przeklikujesz
    sklepiki. Kursor może leżeć na oknie sklepu, wiersz pod kursorem jest pomijany i dobierany
    w następnej klatce.
-4. **Ctrl+F9** kończy. Podgląd na żywo: http://localhost:8778/ w przeglądarce.
+5. **Ctrl+F9** kończy. Podgląd na żywo: http://localhost:8778/ w przeglądarce.
 
-Dane idą na serwer co 5 minut podczas zbierania i po wyłączeniu F9. Gdy nie ma sieci, zostają
-lokalnie w `data/` i pójdą przy następnej okazji.
+Nic nie trzeba wpisywać: adres serwera i klucz są w programie. Jako podpis danych idzie
+Twoja nazwa użytkownika Windows; inny nick wpisujesz w `data\config.json` (pole `client`).
+
+Dane idą na serwer co 5 minut podczas zbierania i po wyłączeniu F9. Bez sieci zostają
+lokalnie w `data\` i pójdą przy następnej okazji.
 
 ## Co jest zbierane
 
