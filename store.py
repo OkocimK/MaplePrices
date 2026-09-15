@@ -17,7 +17,10 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from paths import DATA_DIR as DATA
+try:
+    from paths import DATA_DIR as DATA  # klient: obok exe albo źródeł
+except ImportError:  # serwer ma tylko store.py i ingest.py, ścieżki dostaje z env
+    DATA = Path(__file__).resolve().parent / "data"
 
 DB = DATA / "prices.sqlite"  # wycinki lądują obok, w data/prices_crops/
 DEDUP_MINUTES = 10

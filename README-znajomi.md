@@ -1,29 +1,35 @@
-# Tracker cen scrolli (Old School Maple)
+# OSM FM price tracker (Old School Maple)
 
-Jeden plik: `osmsfm-tracker.exe`. Robi zrzuty okna gry, gdy przeglądasz sklepiki na FM,
-odczytuje z nich nazwy i ceny i wysyła na wspólną stronę https://osmsfm.duckdns.org/.
-Nie dotyka gry: nie czyta jej pamięci, nie klika, nie wysyła pakietów. Zrzut ekranu i OCR.
+One file: `osmsfm-tracker.exe`. It screenshots the game window while you browse hired
+merchants on the Free Market, reads item names and prices from the screenshots and uploads
+them to the shared page https://osmsfm.duckdns.org/. It does not touch the game: no memory
+reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 
-## Użycie
+## Usage
 
-1. Wrzuć `osmsfm-tracker.exe` do dowolnego folderu (obok powstanie `data\` z lokalną kopią).
-2. Gra w oknie (nie pełny ekran), rozdzielczość 1920×1080. Przy innej program nic nie odczyta.
-3. Uruchom exe. Windows przy pierwszym razie może pokazać SmartScreen („nieznany wydawca"):
-   „Więcej informacji", „Uruchom mimo to". Antywirus też bywa czujny na PyInstallera.
-4. **F9** włącza zbieranie, drugi raz **F9** wyłącza. Włączaj tylko, gdy przeklikujesz
-   sklepiki. Kursor może leżeć na oknie sklepu, wiersz pod kursorem jest pomijany i dobierany
-   w następnej klatce.
-5. **Ctrl+F9** kończy. Podgląd na żywo: http://localhost:8778/ w przeglądarce.
+1. Put `osmsfm-tracker.exe` in any folder (a `data\` folder with a local copy appears next to it).
+2. Run the game **in a window** (not full screen) at **1920x1080**. Other resolutions are not recognised.
+3. Run the exe. Windows SmartScreen may warn about an unknown publisher the first time:
+   "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.
+   Antivirus software is sometimes suspicious of PyInstaller executables, that is all it is.
+4. **F9** starts collecting, **F9** again stops. Turn it on only while you click through shops.
+   The cursor may rest on the shop window; the row under it is skipped and picked up in the
+   next frame.
+5. **Ctrl+F9** quits. Live preview: http://localhost:8778/ in your browser.
 
-Nic nie trzeba wpisywać: adres serwera i klucz są w programie. Dane są anonimowe: program
-losuje sobie identyfikator w rodzaju `anon-3f9c2a` i nim podpisuje wysyłkę. Jeśli chcesz się
-podpisać nickiem, wpisz go w `data\config.json` (pole `client`).
+Nothing to type in: the server address and key are built in. Uploads are anonymous: the
+program picks a random id like `anon-3f9c2a` and signs its uploads with it. If you want to
+sign with a nickname instead, edit `data\config.json` (field `client`).
 
-Dane idą na serwer co 5 minut podczas zbierania i po wyłączeniu F9. Bez sieci zostają
-lokalnie w `data\` i pójdą przy następnej okazji.
+Data is uploaded every 5 minutes while collecting and once more when you stop. Without a
+network connection it stays in `data\` and goes out next time.
 
-## Co jest zbierane
+## What is collected
 
-Nazwa przedmiotu, cena, czy oferta jest wykupiona (wyszarzona), nick właściciela sklepu, tytuł
-sklepu, mapa i kanał, czas do zniknięcia sklepu, mały wycinek wiersza (obrazek) do sprawdzenia
-odczytu, oraz losowy identyfikator programu. Nic z Twojej postaci, konta ani z czatu.
+Item name, price, whether the offer is sold out (greyed), the shop owner's name, shop title,
+map and channel, the shop's remaining time, a small crop of the row (image) to verify the
+reading, and the random id of the program. Nothing about your character, account or chat.
+
+## Note
+
+The console messages of the tracker are in Polish. The web page is in English.

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Maple ceny</title>
+<title>OSM FM Prices</title>
 <style>
   :root {
     --paper: #f6efe2; --ink: #2b2418; --muted: #7a6c55; --line: #d9ccb4; --panel: #fffaf0;
@@ -11,14 +11,19 @@
     --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
   }
   body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
-  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--line); position: sticky; top: 0; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--line); position: sticky; top: 0; flex-wrap: wrap; }
   h1 { font-size: 18px; margin: 0; }
   .tog { font: inherit; font-weight: 700; padding: 6px 16px; border-radius: 6px; border: 2px solid var(--accent2); background: var(--accent); color: #fff; cursor: pointer; }
   .tog.off { background: #ddd; color: #444; border-color: #999; }
   .stat { color: var(--muted); font-size: 13px; }
+  .dl { margin-left: auto; font-weight: 700; color: var(--accent2); text-decoration: none; border: 2px solid var(--accent2); border-radius: 6px; padding: 5px 12px; }
+  .dl:hover { background: var(--accent); color: #fff; }
   main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 16px; }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .about { grid-column: 1 / -1; }
+  .about summary { cursor: pointer; font-weight: 700; }
+  .about p, .about li { font-size: 13px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
@@ -44,41 +49,61 @@
 </head>
 <body>
 <header>
-  <h1>Maple ceny</h1>
-  <button id="tog" class="tog off">wyłączone</button>
+  <h1>OSM FM Prices</h1>
+  <button id="tog" class="tog off">off</button>
   <span id="stat" class="stat"></span>
-  <input id="filter" class="filter" placeholder="filtr nazwy, np. overall dex" type="search">
-  <label class="stat"><input id="onlyNow" type="checkbox" checked> tylko z aktualnymi ofertami</label>
+  <input id="filter" class="filter" placeholder="filter by name, e.g. overall dex" type="search">
+  <label class="stat"><input id="onlyNow" type="checkbox" checked> only items with live offers</label>
+  <a id="dl" class="dl" href="download/osmsfm-tracker.zip" hidden>Download tracker (Windows)</a>
 </header>
 <main>
+  <details id="about" class="panel about" hidden>
+    <summary>What is this and how to help collect prices</summary>
+    <p>Free Market prices of scrolls (and other items) in <b>Old School Maple</b> (MapleStory Worlds), collected by a small
+      tracker that screenshots the shop window while you browse hired merchants and reads the item names and prices.
+      It does not touch the game: no memory reading, no clicking, no packets. Screenshot plus OCR, nothing else.</p>
+    <p>To contribute prices:</p>
+    <ol>
+      <li><a href="download/osmsfm-tracker.zip">Download the tracker</a> (Windows, one exe, no install) and unzip it anywhere.</li>
+      <li>Run the game <b>in a window</b> at <b>1920x1080</b>. Other resolutions are not recognised.</li>
+      <li>Run <code>osmsfm-tracker.exe</code>. Windows SmartScreen will warn about an unknown publisher the first time:
+        click "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.</li>
+      <li>Press <b>F9</b> to start collecting, walk through the FM shops, press <b>F9</b> again to stop. <b>Ctrl+F9</b> quits.
+        The cursor may rest on the shop window; the row under it is skipped and picked up in the next frame.</li>
+    </ol>
+    <p>Data is uploaded every 5 minutes while collecting and once more when you stop. It is anonymous: the tracker signs its
+      uploads with a random id like <code>anon-3f9c2a</code>. What is collected: item name, price, whether the offer is sold out
+      (greyed), the shop owner's name, shop title, map and channel, the shop's remaining time and a small crop of the row for
+      verification. Nothing about your character, account or chat.</p>
+  </details>
   <section class="panel">
     <table>
       <thead><tr>
-        <th>przedmiot</th><th class="n">n</th>
-        <th class="n">aktualne</th><th class="n">ask min teraz</th><th class="n">ask med 7d</th>
+        <th>item</th><th class="n">n</th>
+        <th class="n">live</th><th class="n">ask min now</th><th class="n">ask med 7d</th>
         <th class="n">sold med 7d</th><th class="n">sold max 7d</th>
-        <th class="n">kup do</th><th class="n">sprzedaj za</th><th>ostatnio</th>
+        <th class="n">buy up to</th><th class="n">sell at</th><th>last seen</th>
       </tr></thead>
       <tbody id="items"></tbody>
     </table>
-    <p class="hint">Ask to ceny wystawione (aktywne), sold to wiersze wykupione, czyli ceny, za które ktoś kupił; schodzą najtańsze, więc to dolna granica.
-      „Aktualne" to oferty, których sklep jeszcze stoi (licznik z paska sklepu) i których nie widziano później jako wykupione; przedawnione zostają w historii.
-      „Kup do" = dolny kwartyl asków z 7 dni, „sprzedaj za" = między medianą sold a najniższym aktualnym askiem. Heurystyka, nie prawda objawiona.
-      Nazwy z „?" mają obcięty stat albo procent. Kliknij wiersz, żeby zobaczyć obserwacje i wycinki.</p>
+    <p class="hint">Ask = listed (active) prices, sold = greyed-out rows, i.e. prices somebody actually paid; the cheapest go first, so treat sold as a floor.
+      "Live" = offers whose shop is still up (from the shop's timer) and which were not seen sold later; expired ones stay in history.
+      "Buy up to" = lower quartile of asks from the last 7 days, "sell at" = between the sold median and the lowest live ask. A heuristic, not gospel.
+      Names with "?" have a truncated stat or percent. Click a row to see the observations and crops.</p>
     <div id="log" class="log"></div>
   </section>
   <aside class="panel">
-    <h2 id="selname" style="font-size:15px;margin:0 0 8px">wybierz przedmiot</h2>
+    <h2 id="selname" style="font-size:15px;margin:0 0 8px">select an item</h2>
     <div id="obs" class="obs"></div>
   </aside>
 </main>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
-  const fmt = v => v == null ? '' : v.toLocaleString('pl-PL');
+  const fmt = v => v == null ? '' : v.toLocaleString('en-US');
   let items = [], sel = null;
-  // Tryb statyczny: strona opublikowana przez publish.py nie ma tracker.py za sobą,
-  // czyta data.json (zestawienie policzone w chwili publikacji) i nic nie zmienia.
+  // Static mode: the published page has no tracker.py behind it, it reads data.json
+  // (the summary computed at publish time) and changes nothing.
   let STATIC = null;
 
   function hints(it) {
@@ -121,14 +146,14 @@
     const box = $('#obs'); box.innerHTML = '';
     for (const o of rows) {
       const d = document.createElement('div'); d.className = 'ob';
-      const exp = o.sold ? '' : (o.expired ? ' · wygasło' : ' · do ' + o.expires.replace('T', ' ').slice(5, 16));
-      d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.expired ? ' old' : '')}">${fmt(o.price)}${o.sold ? ' (wykupione)' : ''}</span>
-        ${STATIC ? '<span></span>' : '<button title="usuń błędną obserwację">usuń</button>'}
-        <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp} · ${o.owner ?? '?'} · ${o.map ?? ''}${o.channel ? '<' + o.channel + '>' : ''}${o.complete ? '' : ' · niepełne'} · OCR: „${o.raw_name}"</span>
+      const exp = o.sold ? '' : (o.expired ? ' · expired' : ' · until ' + o.expires.replace('T', ' ').slice(5, 16));
+      d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.expired ? ' old' : '')}">${fmt(o.price)}${o.sold ? ' (sold)' : ''}</span>
+        ${STATIC ? '<span></span>' : '<button title="delete a wrong observation">delete</button>'}
+        <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp} · ${o.owner ?? '?'} · ${o.map ?? ''}${o.channel ? '<' + o.channel + '>' : ''}${o.complete ? '' : ' · incomplete'} · OCR: "${o.raw_name}"</span>
         <img src="crops/${o.id}.png" alt="" loading="lazy">`;
       const btn = d.querySelector('button');
       if (btn) btn.onclick = async () => {
-        if (!confirm('Usunąć tę obserwację?')) return;
+        if (!confirm('Delete this observation?')) return;
         await fetch('/api/delete?id=' + o.id, { method: 'POST' });
         await loadItems(); await loadObs();
       };
@@ -137,27 +162,30 @@
   }
   async function loadStatic() {
     const r = await fetch('data.json', { cache: 'no-cache' });
-    if (!r.ok) throw new Error('brak data.json');
+    if (!r.ok) throw new Error('no data.json');
     STATIC = await r.json();
     $('#tog').hidden = true;
     $('#log').hidden = true;
-    $('#stat').textContent = `stan z ${STATIC.generated.replace('T', ' ').slice(0, 16)} · ${STATIC.items.length} przedmiotów`;
+    $('#dl').hidden = false;
+    $('#about').hidden = false;
+    $('#stat').textContent = `updated ${STATIC.generated.replace('T', ' ').slice(0, 16)} · ${STATIC.items.length} items`;
     await loadItems();
   }
   async function poll() {
     if (STATIC) return;
     try {
       const r = await fetch('/api/state');
-      if (!r.ok) throw new Error('brak api');
+      if (!r.ok) throw new Error('no api');
       const s = await r.json();
       const b = $('#tog');
-      b.textContent = s.on ? 'WŁĄCZONE (F9)' : 'wyłączone (F9)';
+      b.textContent = s.on ? 'COLLECTING (F9)' : 'off (F9)';
       b.className = 'tog' + (s.on ? '' : ' off');
-      $('#stat').textContent = `klatki ${s.frames} · sklepy ${s.shops} · nowe oferty ${s.added}` + (s.stale ? ` · nieświeże ikony ${s.stale}` : '');
+      $('#stat').textContent = `frames ${s.frames} · shops ${s.shops} · new offers ${s.added}` + (s.stale ? ` · stale icons ${s.stale}` : '')
+        + (s.unpublished ? ` · ${s.unpublished} not uploaded yet` : '') + (s.publish_error ? ` · upload failed: ${s.publish_error}` : '');
       $('#log').textContent = s.log.slice(0, 12).join('\n');
       if (s.added !== poll.added) { poll.added = s.added; await loadItems(); if (sel) await loadObs(); }
     } catch (e) {
-      try { await loadStatic(); } catch (e2) { $('#stat').textContent = 'brak połączenia z tracker.py'; }
+      try { await loadStatic(); } catch (e2) { $('#stat').textContent = 'no connection to tracker.py'; }
     }
   }
   $('#tog').onclick = async () => { await fetch('/api/toggle', { method: 'POST' }); await poll(); };
