@@ -295,8 +295,11 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
   **Adres serwera i token są wpisane na sztywno** w `sync.py` (`DEFAULT_SERVER`,
   `DEFAULT_TOKEN`), na prośbę użytkownika: znajomy nic nie wpisuje, `data/config.json`
   powstaje sam z losowym identyfikatorem `anon-xxxxxx` (nie z `%USERNAME%`: użytkownicy
-  mają zostać anonimowi, a nazwa konta Windows bywa imieniem i nazwiskiem). Repo nie ma zdalnego remote, więc token w kodzie
-  nie wycieka przez gita; gdyby remote się pojawił, najpierw wynieść token z historii.
+  mają zostać anonimowi, a nazwa konta Windows bywa imieniem i nazwiskiem).
+  **Token nie jest w gicie** (od 15 września 2026): leży w `pricetrack/token.txt`
+  (ignorowany), `sync.py` czyta go z `RES_DIR`, `build_exe.py` dokłada do exe jako zasób
+  i odmawia budowy bez pliku. Wcześniejsza wersja miała go w `sync.py`; historia repo
+  została przepisana (`git filter-branch`), zero trafień w żadnym refie.
   Zmiana tokenu = nowy exe dla wszystkich. **Bez podpisu kodu, decyzja z 15 września 2026**:
   self-signed nic nie daje u innych (musieliby zainstalować nasz root), kupiony certyfikat
   (Certum OSS od 25 EUR, wymaga publicznego repo) i tak startuje z zerową reputacją
@@ -306,6 +309,22 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
 - Lokalny viewer (:8778) dalej pokazuje lokalną bazę; „usuń" działa tylko lokalnie, serwer
   nie ma jeszcze moderacji. `MemoryCurrent` usługi ~100 MB zaraz po zasiewie (w tym cache
   plików), limit 150 MB w unicie.
+
+## Publiczne repo: https://github.com/OkocimK/MaplePrices (15 września 2026)
+
+Na GitHub idzie **sam folder `pricetrack/`**, nie całe repo Maple (kalkulator zostaje
+lokalnie). Mechanizm: `git subtree`, remote `prices`. Po commicie w repo głównym:
+
+```
+git subtree push --prefix=pricetrack prices main
+```
+
+Split jest deterministyczny względem historii głównej, więc push jest fast-forward,
+dopóki nikt nie przepisze historii `main`. Gdyby trzeba było od nowa: `git subtree split
+--prefix=pricetrack -b prices-main` i `git push prices prices-main:main`. Przed pushem
+zawsze `git grep` po tokenie i IP; `deploy/` z konfiguracją hosta jest poza folderem,
+więc nie jedzie. `README.md` w folderze to strona główna repo (po angielsku),
+`README-znajomi.md` to instrukcja z zipa.
 
 ## M5b, tooltip dla obciętych nazw (do zrobienia)
 
