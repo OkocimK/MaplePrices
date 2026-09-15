@@ -294,7 +294,8 @@ i po każdej paczce podmienia atomowo `data.json`, z którego czyta `index.html`
   - `--exclude-module cv2` (nieużywane, doklejało 44 MB), tkinter, onnxruntime.
   **Adres serwera i token są wpisane na sztywno** w `sync.py` (`DEFAULT_SERVER`,
   `DEFAULT_TOKEN`), na prośbę użytkownika: znajomy nic nie wpisuje, `data/config.json`
-  powstaje sam z nickiem z `%USERNAME%`. Repo nie ma zdalnego remote, więc token w kodzie
+  powstaje sam z losowym identyfikatorem `anon-xxxxxx` (nie z `%USERNAME%`: użytkownicy
+  mają zostać anonimowi, a nazwa konta Windows bywa imieniem i nazwiskiem). Repo nie ma zdalnego remote, więc token w kodzie
   nie wycieka przez gita; gdyby remote się pojawił, najpierw wynieść token z historii.
   Zmiana tokenu = nowy exe dla wszystkich. Bez podpisu kodu SmartScreen ostrzega przy
   pierwszym uruchomieniu, README o tym mówi.

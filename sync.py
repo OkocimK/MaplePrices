@@ -2,9 +2,9 @@
 
 Adres serwera i token są wpisane na sztywno (DEFAULT_SERVER, DEFAULT_TOKEN), żeby znajomy
 po uruchomieniu exe nie musiał nic wpisywać. Przy pierwszym starcie powstaje
-`data/config.json` z tymi wartościami i nickiem z nazwy użytkownika Windows:
-    {"server": "https://osmsfm.duckdns.org", "token": "<wspólny sekret>", "client": "<nick>"}
-Kto chce inny nick, edytuje ten plik. Postęp w `data/sync.json`: {"last_id": N}, czyli do
+`data/config.json` z tymi wartościami i losowym, anonimowym identyfikatorem klienta:
+    {"server": "https://osmsfm.duckdns.org", "token": "<wspólny sekret>", "client": "anon-3f9c2a"}
+Kto chce się podpisać nickiem, edytuje ten plik. Postęp w `data/sync.json`: {"last_id": N}, czyli do
 którego lokalnego id wszystko już poszło.
 
 Wiersze idą paczkami po BATCH, każdy z wycinkiem jako PNG w base64 (paleta 128 kolorów,
@@ -21,7 +21,7 @@ from __future__ import annotations
 import base64
 import io
 import json
-import os
+import secrets
 import sys
 import urllib.error
 import urllib.request
@@ -45,11 +45,10 @@ class SyncError(RuntimeError):
 
 
 def _default_client() -> str:
-    for k in ("USERNAME", "USER"):
-        v = os.environ.get(k, "").strip()
-        if v:
-            return v[:40]
-    return "anon"
+    """Losowy, stały dla instalacji identyfikator zamiast nicku: użytkownicy mają zostać
+    anonimowi, a serwer i tak potrzebuje tylko rozróżnić klientów (np. odciąć śmieci od
+    jednego). Nazwa użytkownika Windows odpadła, bo bywa imieniem i nazwiskiem."""
+    return "anon-" + secrets.token_hex(3)
 
 
 def load_config() -> dict:
