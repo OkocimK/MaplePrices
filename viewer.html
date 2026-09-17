@@ -54,6 +54,9 @@
   .ob .p.sold { color: var(--sold); text-decoration: line-through; }
   .ob .p.old { color: var(--muted); }
   .ob .m { color: var(--muted); font-size: 12px; white-space: normal; }
+  .ob.hist { background: #f4efe4; opacity: .6; }
+  .ob.hist img { filter: grayscale(1); }
+  .obhead { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 4px 2px 0; }
   .ob button { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--bad); color: var(--bad); background: #fff; cursor: pointer; }
   .log { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; margin-top: 8px; flex: none; }
   .filter { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; width: 260px; }
@@ -72,7 +75,7 @@
   <button id="tog" class="tog off">off</button>
   <span id="stat" class="stat"></span>
   <input id="filter" class="filter" placeholder="filter by name, e.g. overall dex" type="search">
-  <label class="stat"><input id="onlyNow" type="checkbox" checked> only items with live offers</label>
+  <label class="stat"><input id="onlyNow" type="checkbox" checked> only live offers</label>
   <a id="dl" class="dl" href="download/osmsfm-tracker.zip" hidden>Download tracker (Windows)</a>
 </header>
 <main>
@@ -146,25 +149,25 @@
   // data.json is regenerated only when a batch arrives, so its "live" counts age until the next
   // upload (and the server clock runs in UTC). Recompute liveness here, at display time: an active
   // offer is live while its shop timer has not run out and the same offer was not seen sold later.
+  // Flags every observation of one item: `expired`, and `live` = active, shop timer not run out,
+  // the same offer (owner + price) not seen sold later. Rows come newest first, and only the newest
+  // sighting of an offer can be live, so an offer seen on two walks is not counted twice.
+  function markLive(rows) {
+    const now = nowIso(), newest = {};
+    for (const o of rows) {
+      const k = o.owner + '|' + o.price;
+      o.expired = o.expires <= now;
+      o.live = !(k in newest) && !o.sold && !o.expired;
+      if (!(k in newest)) newest[k] = o;
+    }
+    return rows;
+  }
   function refreshLive() {
     if (!STATIC) return;
-    const now = nowIso();
     for (const it of items) {
-      const rows = STATIC.obs[it.name] || [];
-      const lastSold = {};  // owner|price -> sold flag of the most recent observation
-      for (const o of rows) {  // rows are newest first
-        const k = o.owner + '|' + o.price;
-        if (!(k in lastSold)) lastSold[k] = o.sold;
-      }
-      let n = 0, min = null;
-      for (const o of rows) {
-        o.expired = o.expires <= now;
-        if (o.sold || o.expired || lastSold[o.owner + '|' + o.price]) continue;
-        n++;
-        if (min == null || o.price < min) min = o.price;
-      }
-      it.n_now = n;
-      it.ask_min_now = min;
+      const live = markLive(STATIC.obs[it.name] || []).filter(o => o.live);
+      it.n_now = live.length;
+      it.ask_min_now = live.length ? Math.min(...live.map(o => o.price)) : null;
     }
   }
   function hints(it) {
@@ -218,10 +221,16 @@
     $('#selname').textContent = sel;
     const rows = STATIC ? (STATIC.obs[sel] || []) : await (await fetch('/api/obs?name=' + encodeURIComponent(sel))).json();
     const box = $('#obs'); box.innerHTML = '';
-    for (const o of rows) {
-      const d = document.createElement('div'); d.className = 'ob';
-      const exp = o.sold ? '' : (o.expired ? ' · expired' : ' · until ' + o.expires.replace('T', ' ').slice(5, 16));
-      d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.expired ? ' old' : '')}">${fmt(o.price)}${o.sold ? ' (sold)' : ''}</span>
+    markLive(rows);
+    // Live offers first, cheapest on top; history (expired, sold, superseded sightings) below,
+    // newest first, and hidden altogether while "only live" is ticked.
+    const live = rows.filter(o => o.live).sort((a, b) => a.price - b.price);
+    const hist = rows.filter(o => !o.live);
+    const head = (text) => { const h = document.createElement('div'); h.className = 'obhead'; h.textContent = text; box.appendChild(h); };
+    const card = (o) => {
+      const d = document.createElement('div'); d.className = 'ob' + (o.live ? '' : ' hist');
+      const exp = o.sold ? '' : (o.live ? ' · until ' + o.expires.replace('T', ' ').slice(5, 16) : (o.expired ? ' · expired' : ' · seen again later'));
+      d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.live ? '' : ' old')}">${fmt(o.price)}${o.sold ? ' (sold)' : ''}</span>
         ${STATIC ? '<span></span>' : '<button title="delete a wrong observation">delete</button>'}
         <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp} · ${o.owner ?? '?'} · ${o.map ?? ''}${o.channel ? '<' + o.channel + '>' : ''}${o.complete ? '' : ' · incomplete'} · OCR: "${o.raw_name}"</span>
         <img src="crops/${o.id}.png" alt="" loading="lazy">`;
@@ -232,6 +241,14 @@
         await loadItems(); await loadObs();
       };
       box.appendChild(d);
+    };
+    head(live.length ? `live now: ${live.length}` : 'no live offers');
+    live.forEach(card);
+    if ($('#onlyNow').checked) {
+      if (hist.length) head(`history hidden: ${hist.length} (untick "only live" to see it)`);
+    } else if (hist.length) {
+      head(`history: ${hist.length} expired, sold or older sightings`);
+      hist.forEach(card);
     }
   }
   async function loadStatic() {
@@ -266,13 +283,13 @@
   }
   $('#tog').onclick = async () => { await fetch('/api/toggle', { method: 'POST' }); await poll(); };
   $('#filter').oninput = () => { page = 1; renderItems(); };
-  $('#onlyNow').onchange = () => { page = 1; renderItems(); };
+  $('#onlyNow').onchange = () => { page = 1; renderItems(); loadObs(); };
   $('#prev').onclick = () => { page--; renderItems(); };
   $('#next').onclick = () => { page++; renderItems(); };
   $('#pagesize').onchange = () => { page = 1; renderItems(); };
   poll().then(() => { if (!STATIC) loadItems(); });
   setInterval(poll, 2000);
-  setInterval(() => { if (STATIC) renderItems(); }, 60000);  // offers keep expiring while the tab is open
+  setInterval(() => { if (STATIC) { renderItems(); loadObs(); } }, 60000);  // offers keep expiring while the tab is open
 })();
 </script>
 </body>
