@@ -17,7 +17,7 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 |---|---|
 | `tracker.py` | main loop: capture, recognise, store, local preview on :8778, background upload |
 | `shopframe.py` | shop window geometry: finds the list in the frame (movable window), empty/sold rows |
-| `minimap.py`, `minimap_templates.json` | finds the minimap (movable, collapsed or hidden) to read map and channel |
+| `minimap.py`, `minimap_templates.json` | finds the minimap (movable, collapsed or hidden) to read the map and the number next to it (in the Free Market that is the room) |
 | `glyphs.py`, `price_glyphs.json` | price digits by template matching (Windows OCR drops numbers) |
 | `names.py`, `icons.py`, `icon_templates.json` | scroll name grammar, percent from icon colour |
 | `recognize.py` | one frame in, observations out; scales the frame to the reference UI size first (cursor and stale-icon guards) |

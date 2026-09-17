@@ -10,7 +10,7 @@ reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 1. Put `osmsfm-tracker.exe` in any folder (a `data\` folder with a local copy appears next to it).
 2. Run the game at **1920x1080**, windowed or full screen. Other window sizes work too, but the
    game shrinks its UI with the window and small windows read worse. The minimap can be moved,
-   collapsed or hidden (without it offers are stored without map and channel).
+   collapsed or hidden (without it offers are stored without the map and the Free Market room number).
 3. Run the exe. Windows SmartScreen may warn about an unknown publisher the first time:
    "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.
    Antivirus software is sometimes suspicious of PyInstaller executables, that is all it is.
@@ -31,5 +31,5 @@ network connection it stays in `data\` and goes out next time.
 ## What is collected
 
 Item name, price, whether the offer is sold out (greyed), the shop owner's name, shop title,
-map and channel, the shop's remaining time, a small crop of the row (image) to verify the
+map and Free Market room, the shop's remaining time, a small crop of the row (image) to verify the
 reading, and the random id of the program. Nothing about your character, account or chat.

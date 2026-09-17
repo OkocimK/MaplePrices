@@ -16,12 +16,15 @@ The exe is a console one on purpose: the tracker log is the only place where you
 from __future__ import annotations
 
 import importlib.metadata as md
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 NAME = "osmsfm-tracker"
+# OSMSFM_DIST=some/dir builds elsewhere, e.g. while dist/osmsfm-tracker.exe is running and locked.
+DIST = Path(os.environ.get("OSMSFM_DIST") or HERE / "dist").resolve()
 
 # Every winrt-* distribution drops into the shared `winrt` package one .pyd like
 # `winrt/_winrt_windows_media_ocr.cp312-win_amd64.pyd`, loaded by name at runtime.
@@ -46,7 +49,7 @@ cmd = [
     sys.executable, "-m", "PyInstaller",
     "--noconfirm", "--clean", "--onefile", "--console",
     "--name", NAME,
-    "--distpath", str(HERE / "dist"),
+    "--distpath", str(DIST),
     "--workpath", str(HERE / "build"),
     "--specpath", str(HERE / "build"),
     "--add-data", f"{HERE / 'price_glyphs.json'};.",
@@ -65,6 +68,6 @@ cmd = [
 print("winrt packages:", ", ".join(winrt_pkgs))
 r = subprocess.run(cmd, cwd=HERE)
 if r.returncode == 0:
-    exe = HERE / "dist" / f"{NAME}.exe"
+    exe = DIST / f"{NAME}.exe"
     print(f"\n{exe}  {exe.stat().st_size / 1e6:.1f} MB")
 sys.exit(r.returncode)

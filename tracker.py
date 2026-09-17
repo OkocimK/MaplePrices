@@ -166,6 +166,18 @@ def serve(store: Store, state: State, on_toggle, on_sync=lambda: False) -> Threa
     return srv
 
 
+def _who(r: recognize.Result) -> str:
+    # Owner names written in a script Windows OCR "en" cannot read (CJK, Cyrillic) come out empty.
+    return r.owner or "unreadable owner"
+
+
+def _where(r: recognize.Result) -> str:
+    """The minimap text, e.g. " (Free Market<6>)": in the Free Market the number is the room."""
+    if not r.map:
+        return ""
+    return f" ({r.map}<{r.channel}>)" if r.channel is not None else f" ({r.map})"
+
+
 def _key(r: recognize.Result, o: recognize.Obs) -> tuple:
     return (r.owner, o.name, o.price, o.sold)
 
@@ -177,7 +189,7 @@ def commit(r: recognize.Result, obs: list[recognize.Obs], store: Store, state: S
     new = store.add(sub, now, state.client)
     if new:
         state.added += len(new)
-        state.note(f"+{len(new)} new offers at {r.owner}")
+        state.note(f"+{len(new)} new offers at {_who(r)}{_where(r)}")
 
 
 def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, state: State, now: datetime,
@@ -188,11 +200,11 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
         state.last_owner = None
         state.pending.clear()
         return
-    if r.owner != state.last_owner:
+    ident = r.owner or f"?{r.title}"  # unreadable owner: tell shops apart by the rest of the title
+    if ident != state.last_owner:
         state.shops += 1
-        state.last_owner = r.owner
-        where = f" ({r.map}<{r.channel}>)" if r.map else ""
-        state.note(f"shop: {r.owner}{where}" + (f", {r.skipped_cursor} rows under cursor" if r.skipped_cursor else ""))
+        state.last_owner = ident
+        state.note(f"shop: {_who(r)}{_where(r)}" + (f", {r.skipped_cursor} rows under cursor" if r.skipped_cursor else ""))
         state.pending.clear()
         if r.origin != (0, 0) and r.origin not in state.origins:
             state.origins.add(r.origin)
@@ -200,9 +212,9 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
         if r.minimap != state.minimap_state:
             state.minimap_state = r.minimap
             if r.minimap is None:
-                state.note("minimap not visible: offers are stored without map and channel")
+                state.note("minimap not visible: offers are stored without map and room number")
             elif r.minimap == "map":
-                state.note("minimap shows no map name (shrunk with the \"-\" button?): offers are stored without map and channel")
+                state.note("minimap shows no map name (shrunk with the \"-\" button?): offers are stored without map and room number")
         readable = r.minimap in ("open", "collapsed")
         if ((readable and r.channel is None) or r.ttl_min is None) and state.debug_saved < DEBUG_MAX:
             # unreadable minimap or timer: set crops aside for a look, but not endlessly
@@ -213,7 +225,7 @@ def process(frame: Image.Image, cursor: tuple[int, int] | None, store: Store, st
             stamp = now.strftime("%H%M%S")
             if readable and r.channel is None:
                 frame.crop(r.minimap_box).save(dbg / f"{stamp}-minimap.png")
-                state.note(f"channel unreadable ({r.minimap} minimap): {r.map_raw!r}")
+                state.note(f"room number unreadable ({r.minimap} minimap): {r.map_raw!r}")
             if r.ttl_min is None:
                 frame.crop(recognize.sf.shift(recognize.sf.TIMER, r.origin)).save(dbg / f"{stamp}-timer.png")
                 state.note(f"shop timer unreadable: {r.timer_raw!r}")
