@@ -53,7 +53,9 @@
   .ob .p { font-family: var(--mono); font-weight: 700; }
   .ob .p.sold { color: var(--sold); text-decoration: line-through; }
   .ob .p.old { color: var(--muted); }
-  .ob .m { color: var(--muted); font-size: 12px; white-space: normal; }
+  .ob .who { grid-column: 1 / -1; font-size: 13px; }
+  .ob .who b { font-weight: 700; }
+  .ob .m { grid-column: 1 / -1; color: var(--muted); font-size: 12px; white-space: normal; }
   .ob.hist { background: #f4efe4; opacity: .6; }
   .ob.hist img { filter: grayscale(1); }
   .obhead { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 4px 2px 0; }
@@ -135,6 +137,7 @@
 (() => {
   const $ = s => document.querySelector(s);
   const fmt = v => v == null ? '' : v.toLocaleString('en-US');
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));  // OCR text goes into innerHTML
   let items = [], sel = null, page = 1;
   // Static mode: the published page has no tracker.py behind it, it reads data.json
   // (the summary computed at publish time) and changes nothing.
@@ -232,7 +235,8 @@
       const exp = o.sold ? '' : (o.live ? ' · until ' + o.expires.replace('T', ' ').slice(5, 16) : (o.expired ? ' · expired' : ' · seen again later'));
       d.innerHTML = `<span class="p${o.sold ? ' sold' : (o.live ? '' : ' old')}">${fmt(o.price)}${o.sold ? ' (sold)' : ''}</span>
         ${STATIC ? '<span></span>' : '<button title="delete a wrong observation">delete</button>'}
-        <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp} · ${o.owner ?? '?'} · ${o.map ?? ''}${o.channel ? '<' + o.channel + '>' : ''}${o.complete ? '' : ' · incomplete'} · OCR: "${o.raw_name}"</span>
+        <span class="who"><b>${esc(o.owner ?? 'unreadable owner')}</b>${o.map ? ' · ' + esc(o.map) : ''}${o.channel ? ' <b>&lt;' + o.channel + '&gt;</b>' : ''}</span>
+        <span class="m">${o.ts.replace('T', ' ').slice(0, 16)}${exp}${o.complete ? '' : ' · incomplete'} · OCR: "${esc(o.raw_name)}"</span>
         <img src="crops/${o.id}.png" alt="" loading="lazy">`;
       const btn = d.querySelector('button');
       if (btn) btn.onclick = async () => {
