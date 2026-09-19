@@ -327,6 +327,12 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
 
     import grab
 
+    import ocrsetup
+
+    if not ocrsetup.ensure():  # says what is wrong and offers to install the Windows OCR feature
+        if getattr(sys, "frozen", False):
+            input("Press Enter to close.")
+        sys.exit(1)
     grab.set_dpi_aware()
     hwnd = grab.find_window(title)
     if hwnd is None:

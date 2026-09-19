@@ -21,6 +21,7 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 | `glyphs.py`, `price_glyphs.json` | price digits by template matching (Windows OCR drops numbers) |
 | `names.py`, `icons.py`, `icon_templates.json` | scroll name grammar, percent from icon colour |
 | `recognize.py` | one frame in, observations out; scales the frame to the reference UI size first (cursor and stale-icon guards) |
+| `ocrsetup.py` | checks for the English Windows OCR feature at startup, offers to install it (elevated `dism.exe`, one UAC prompt) |
 | `store.py` | SQLite schema and per-item summary, shared with the server |
 | `sync.py` | upload to the server in batches, anonymous client id |
 | `server/` | ingest service (stdlib only, systemd unit) |

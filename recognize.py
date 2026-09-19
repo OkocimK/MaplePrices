@@ -53,6 +53,19 @@ def _mm() -> minimap.Minimap:
     return _MINIMAP
 
 
+OCR_INSTALL_CMD = 'Add-WindowsCapability -Online -Name "Language.OCR~~~en-US~0.0.1.0"'
+
+
+def ocr_ready() -> bool:
+    """Windows OCR needs the English recognizer, an optional Windows feature that is missing on
+    many non-English installs. winocr checks it with a bare assert on every call, so the tracker
+    asks once at startup and explains what to install instead."""
+    from winrt.windows.globalization import Language
+    from winrt.windows.media.ocr import OcrEngine
+
+    return bool(OcrEngine.is_language_supported(Language("en")))
+
+
 def ocr(im: Image.Image, scale: int = 3, pad: int = 10, boost: bool = False) -> str:
     """boost=True for sold-out (grey) rows: stretches the contrast, OCR loses words on them."""
     if boost:

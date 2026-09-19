@@ -21,6 +21,15 @@ reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 6. If the console keeps saying 0 shops while you browse them, press **F10** with a shop open:
    it saves what the tracker sees to `data\debug\snap-*.png`. Send that file.
 
+7. If the tracker says Windows is missing English text recognition, press Enter to let it
+   install the feature: Windows asks for permission once, a second window shows the progress
+   (a few MB from Windows Update), then the tracker carries on. Older builds print
+   `frame error: AssertionError: Add-WindowsCapability ...` on every frame instead. To install
+   it by hand: right-click Start, open "Terminal (Admin)" or "Windows PowerShell (Admin)", paste
+   the line below and press Enter, then start the tracker again.
+
+       Add-WindowsCapability -Online -Name "Language.OCR~~~en-US~0.0.1.0"
+
 Nothing to type in: the server address and key are built in. Uploads are anonymous: the
 program picks a random id like `anon-3f9c2a` and signs its uploads with it. If you want to
 sign with a nickname instead, edit `data\config.json` (field `client`).
