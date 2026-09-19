@@ -1,11 +1,15 @@
 """sync.py: upload of observations from the local database to the receiver on the server (server/ingest.py).
 
-The server address and token are hard-coded (DEFAULT_SERVER, DEFAULT_TOKEN), so a friend
-running the exe does not have to type anything. On first start `data/config.json` is created
-with these values and a random, anonymous client id:
-    {"server": "https://osmsfm.duckdns.org", "token": "<shared secret>", "client": "anon-3f9c2a"}
-Whoever wants to sign with a nickname edits that file. Progress in `data/sync.json`: {"last_id": N},
-i.e. up to which local id everything has already been sent.
+Nobody types anything in and nothing secret is built into the exe: before the first upload the
+tracker registers with the server (POST /api/register) and gets its own key, which lands in
+`data/config.json` next to the server address and the anonymous client id:
+    {"server": "https://osmsfm.duckdns.org", "client": "anon-3f9c2a", "key": "<this tracker's key>"}
+The server signs the rows with the label tied to the key, so it can cut off one client without
+touching the others. The label is the proposed `client` when nobody else uses it, otherwise the
+server picks one and the config is updated. To sign with a nickname: set `client` and delete `key`,
+the next upload registers again. A config from the shared-token days (field `token`) registers
+with that token once, which lets it keep its old label, and then drops it.
+Progress in `data/sync.json`: {"last_id": N}, i.e. up to which local id everything has already been sent.
 
 Rows go in batches of BATCH, each with its crop as a base64 PNG (128-colour palette,
 ~16 KB). The server deduplicates on its own, so re-sending the same batch after a dropped
@@ -13,7 +17,7 @@ connection is safe. Nothing flows from the server down to the client: the local 
 a local copy of what this client has seen.
 
     .venv\\Scripts\\python sync.py            # send everything that has not gone yet
-    .venv\\Scripts\\python sync.py --setup    # ask for server, token and nickname, save the config
+    .venv\\Scripts\\python sync.py --setup    # ask for server and nickname, save the config
 """
 
 from __future__ import annotations
@@ -27,7 +31,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from paths import RES_DIR
 from store import DATA, DB, Store
 
 CONFIG = DATA / "config.json"
@@ -35,12 +38,7 @@ STATE = DATA / "sync.json"
 BATCH = 150
 TIMEOUT = 120
 
-# The shared token for the friends' trackers lives in `token.txt` next to the sources (outside git,
-# the repo is public) and is built into the exe by build_exe.py. The same one sits in /etc/osmsfm/token
-# on the server; to rotate it: delete that file, publish.py creates a new one, put it here, build the exe.
 DEFAULT_SERVER = "https://osmsfm.duckdns.org"
-_TOKEN_FILE = RES_DIR / "token.txt"
-DEFAULT_TOKEN = _TOKEN_FILE.read_text(encoding="utf-8").strip() if _TOKEN_FILE.exists() else ""
 
 
 class SyncError(RuntimeError):
@@ -50,13 +48,15 @@ class SyncError(RuntimeError):
 def _default_client() -> str:
     """A random identifier, fixed per installation, instead of a nickname: users are to stay
     anonymous, and the server only needs to tell clients apart anyway (e.g. to cut off junk from
-    one of them). The Windows user name was rejected because it is often a real first and last name."""
+    one of them). The Windows user name was rejected because it is often a real first and last name.
+    It is only a proposal: the label that counts is the one the server ties to the key."""
     return "anon-" + secrets.token_hex(3)
 
 
 def load_config() -> dict:
     """Reads `data/config.json`; when it is missing or incomplete, fills in the missing fields
-    from the defaults and saves it. Never asks."""
+    from the defaults and saves it. Never asks and never touches the network: the key is fetched
+    by `ensure_key` right before the first upload, so the tracker still starts offline."""
     c: dict = {}
     if CONFIG.exists():
         try:
@@ -64,17 +64,33 @@ def load_config() -> dict:
         except ValueError:
             c = {}
     changed = False
-    for k, v in (("server", DEFAULT_SERVER), ("token", DEFAULT_TOKEN), ("client", None)):
+    for k, v in (("server", DEFAULT_SERVER), ("client", None)):
         if not c.get(k):
             c[k] = v if v is not None else _default_client()
             changed = True
     c["server"] = c["server"].rstrip("/")
-    if not c["token"]:
-        raise SyncError("no upload token: put it in token.txt next to the sources (build) or in data/config.json")
     if changed:
-        DATA.mkdir(parents=True, exist_ok=True)
-        CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
+        _save_config(c)
     return c
+
+
+def _save_config(c: dict) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def ensure_key(cfg: dict, log=print) -> None:
+    """Registers with the server when the config has no key yet. Updates `cfg` in place (the
+    tracker's uploader holds the same dict) and saves it."""
+    if cfg.get("key"):
+        return
+    res = _request(cfg, "/api/register", {"client": cfg.get("client")}, bearer=cfg.get("token"))
+    if not res.get("key") or not res.get("client"):
+        raise SyncError("server did not hand out a key")
+    cfg["key"], cfg["client"] = res["key"], res["client"]
+    cfg.pop("token", None)  # the shared token has done its last job: proving the old label is ours
+    _save_config(cfg)
+    log(f"registered with the server as {cfg['client']}")
 
 
 def setup(defaults: dict | None = None) -> dict:
@@ -82,11 +98,11 @@ def setup(defaults: dict | None = None) -> dict:
     d = defaults or load_config()
     print("Upload settings (Enter keeps the value in brackets).")
     server = input(f"  server address [{d['server']}]: ").strip() or d["server"]
-    token = input(f"  token [{d['token']}]: ").strip() or d["token"]
     client = input(f"  client id or nickname [{d['client']}]: ").strip() or d["client"]
-    c = {"server": server.rstrip("/"), "token": token, "client": client}
-    DATA.mkdir(parents=True, exist_ok=True)
-    CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
+    c = dict(d, server=server.rstrip("/"), client=client)
+    if (c["server"], c["client"]) != (d["server"], d["client"]):
+        c.pop("key", None)  # another server or another name: register again on the next upload
+    _save_config(c)
     return c
 
 
@@ -111,23 +127,40 @@ def _crop_b64(path: Path) -> str | None:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def _post(cfg: dict, payload: dict) -> dict:
+class _Unauthorized(SyncError):
+    pass
+
+
+def _request(cfg: dict, path: str, payload: dict, bearer: str | None) -> dict:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        cfg["server"] + "/api/ingest", data=body, method="POST",
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + cfg["token"],
-                 "User-Agent": "osmsfm-tracker"},
-    )
+    headers = {"Content-Type": "application/json", "User-Agent": "osmsfm-tracker"}
+    if bearer:
+        headers["Authorization"] = "Bearer " + bearer
+    req = urllib.request.Request(cfg["server"] + path, data=body, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:200]
         if e.code == 401:
-            raise SyncError("server rejected the token (401); check data/config.json") from None
+            raise _Unauthorized("server does not know this tracker's key (401)") from None
+        if e.code == 403:
+            raise SyncError("the server has blocked uploads from this tracker") from None
+        if e.code == 429:
+            raise SyncError("the server is refusing for now (too many requests), it will be retried later") from None
         raise SyncError(f"server responded {e.code}: {detail}") from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise SyncError(f"cannot reach {cfg['server']}: {e}") from None
+
+
+def _post(cfg: dict, payload: dict, log=print) -> dict:
+    ensure_key(cfg, log)
+    try:
+        return _request(cfg, "/api/ingest", payload, bearer=cfg["key"])
+    except _Unauthorized:  # the server lost its client list (rebuilt database): one fresh registration
+        cfg.pop("key", None)
+        ensure_key(cfg, log)
+        return _request(cfg, "/api/ingest", payload, bearer=cfg["key"])
 
 
 def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
@@ -142,10 +175,9 @@ def push(store: Store, cfg: dict, log=print) -> tuple[int, int]:
         for r in rows:
             r = dict(r)
             oid = r.pop("id")
-            r["client"] = cfg["client"]
             r["crop"] = _crop_b64(store.crops / f"{oid}.png")
             payload_rows.append(r)
-        res = _post(cfg, {"client": cfg["client"], "rows": payload_rows})
+        res = _post(cfg, {"rows": payload_rows}, log)
         last = rows[-1]["id"]
         _save_last_id(last)
         sent += len(rows)

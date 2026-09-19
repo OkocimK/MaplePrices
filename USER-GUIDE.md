@@ -30,9 +30,13 @@ reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 
        Add-WindowsCapability -Online -Name "Language.OCR~~~en-US~0.0.1.0"
 
-Nothing to type in: the server address and key are built in. Uploads are anonymous: the
+Nothing to type in: the server address is built in and the tracker gets its own upload key
+from the server on the first upload. Uploads are anonymous: the
 program picks a random id like `anon-3f9c2a` and signs its uploads with it. If you want to
-sign with a nickname instead, edit `data\config.json` (field `client`).
+sign with a nickname instead, edit `data\config.json`: put the nickname in `client` and delete the
+`key` line; the next upload registers the new name (letters, digits, `_ . -`, 3 to 24 characters;
+a name somebody already uses is replaced with a random id). The `key` is this tracker's own
+upload key, handed out by the server on the first upload. Keep it to yourself.
 
 Data is uploaded every 5 minutes while collecting and once more when you stop. Without a
 network connection it stays in `data\` and goes out next time.

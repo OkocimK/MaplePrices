@@ -23,8 +23,8 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 | `recognize.py` | one frame in, observations out; scales the frame to the reference UI size first (cursor and stale-icon guards) |
 | `ocrsetup.py` | checks for the English Windows OCR feature at startup, offers to install it (elevated `dism.exe`, one UAC prompt) |
 | `store.py` | SQLite schema and per-item summary, shared with the server |
-| `sync.py` | upload to the server in batches, anonymous client id |
-| `server/` | ingest service (stdlib only, systemd unit) |
+| `sync.py` | upload to the server in batches, anonymous client id, registers for its own upload key |
+| `server/` | ingest service (stdlib only, systemd unit), per-client keys (`clients.py`), moderation CLI (`admin.py`: list, ban, purge) |
 | `viewer.html` | the page, works both locally (live API) and published (static `data.json`) |
 | `publish.py` | deploys server code, the page and the tracker zip over ssh |
 | `build_exe.py`, `make_dist.py` | PyInstaller build and the zip for download |
@@ -34,7 +34,7 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 ```
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt pyinstaller
-.venv\Scripts\python build_exe.py      # needs token.txt (upload token, not in git)
+.venv\Scripts\python build_exe.py      # nothing secret goes in, every tracker registers for its own key
 .venv\Scripts\python make_dist.py
 ```
 

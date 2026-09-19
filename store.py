@@ -5,9 +5,8 @@ hence **standard library only**: no Pillow, numpy or winocr. Row crops (PNG) are
 whoever has the image: the tracker in `add`, the server in `add_rows`.
 
 Schema: one table `obs`, row = one observed offer. `expires` is the time the shop disappears
-according to its timer, `client` is the collector's nickname (assigned by the server from the
-token... no, from the payload, the token is shared; the nickname serves attribution and cutting
-out junk from one client).
+according to its timer, `client` is the collector's label. On the server it comes from the
+upload key (server/clients.py), not from the payload, so one client's rows can be cut out.
 """
 
 from __future__ import annotations

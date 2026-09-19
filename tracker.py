@@ -305,7 +305,7 @@ class Uploader:
             s.published_added = target
             s.publish_at = datetime.now().isoformat(timespec="seconds")
             s.publish_error = None
-        except Exception as e:  # no network, bad token: the local copy is safe, we will retry later
+        except Exception as e:  # no network, blocked key: the local copy is safe, we will retry later
             s.publish_error = str(e).splitlines()[0]
             s.note(f"upload failed: {s.publish_error}")
         finally:
@@ -317,7 +317,7 @@ def live(store: Store, state: State, title: str, start_on: bool = False, seconds
          auto_sync: bool = True) -> None:
     import sync
 
-    cfg = sync.load_config() if auto_sync else None  # no questions asked: server and token are hard-coded
+    cfg = sync.load_config() if auto_sync else None  # no questions asked; the upload key is fetched on the first upload
     client = cfg["client"] if cfg else None
     state.client = client
     import keyboard

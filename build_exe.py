@@ -3,6 +3,7 @@
     .venv\\Scripts\\python build_exe.py
 
 What goes in: tracker.py with its dependencies, glyph and icon templates, viewer.html (via paths.RES_DIR).
+Nothing secret: every tracker registers with the server for its own upload key (sync.py).
 Pitfalls that have to be worked around by hand:
 - winocr imports winrt modules (`winrt.windows.media.ocr` etc.), which load their .pyd
   files by name at runtime, so PyInstaller will not find them on its own: collect-all on
@@ -42,9 +43,6 @@ for m in pyds:
     collect += ["--hidden-import", m]
 winrt_pkgs = pyds
 
-if not (HERE / "token.txt").exists():
-    sys.exit("missing token.txt (the token from /etc/osmsfm/token on the server, publish.py prints it)")
-
 cmd = [
     sys.executable, "-m", "PyInstaller",
     "--noconfirm", "--clean", "--onefile", "--console",
@@ -56,7 +54,6 @@ cmd = [
     "--add-data", f"{HERE / 'icon_templates.json'};.",
     "--add-data", f"{HERE / 'minimap_templates.json'};.",
     "--add-data", f"{HERE / 'viewer.html'};.",
-    "--add-data", f"{HERE / 'token.txt'};.",  # secret kept outside git, see sync.py
     "--exclude-module", "cv2",  # unused, and it would add 60 MB
     "--exclude-module", "tkinter",
     "--exclude-module", "rapidocr_onnxruntime",
