@@ -5,6 +5,12 @@ merchants on the Free Market, reads item names and prices from the screenshots a
 them to the shared page https://osmsfm.duckdns.org/. It does not touch the game: no memory
 reading, no clicking, no packets. Screenshot plus OCR, nothing else.
 
+**Read this first.** The tracker is a fan-made tool. It is not made, approved or reviewed by Nexon
+or by the creators of Old School Maple. The MapleStory Worlds Platform Operation Policy forbids
+"unauthorized programs". We believe a program that only looks at the screen, the way a screenshot
+does, is not what that rule is about, but that is our reading and not Nexon's, and nobody has
+confirmed it. If Nexon decides otherwise, the risk is on your account, not ours.
+
 ## Usage
 
 1. Put `osmsfm-tracker.exe` in any folder (a `data\` folder with a local copy appears next to it).

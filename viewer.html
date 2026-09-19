@@ -25,6 +25,7 @@
   .about { grid-column: 1 / -1; }
   .about summary { cursor: pointer; font-weight: 700; }
   .about p, .about li { font-size: 13px; }
+  .about .warn { background: #fdf3c4; border: 1px solid #d9b63a; border-radius: 6px; padding: 8px 10px; }
   .results { display: flex; flex-direction: column; }
   .tablewrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -78,7 +79,7 @@
   <span id="stat" class="stat"></span>
   <input id="filter" class="filter" placeholder="filter by name, e.g. overall dex" type="search">
   <label class="stat"><input id="onlyNow" type="checkbox" checked> only live offers</label>
-  <a id="dl" class="dl" href="download/osmsfm-tracker.zip" hidden>Download tracker (Windows)</a>
+  <a id="dl" class="dl" href="#about" hidden>Get the tracker (Windows)</a>
 </header>
 <main>
   <details id="about" class="panel about" hidden>
@@ -86,6 +87,11 @@
     <p>Free Market prices of scrolls (and other items) in <b>Old School Maple</b> (MapleStory Worlds), collected by a small
       tracker that screenshots the shop window while you browse hired merchants and reads the item names and prices.
       It does not touch the game: no memory reading, no clicking, no packets. Screenshot plus OCR, nothing else.</p>
+    <p class="warn"><b>Read this before you run it.</b> The tracker is a fan-made tool. It is not made, approved or
+      reviewed by Nexon or by the creators of Old School Maple. The MapleStory Worlds Platform Operation Policy forbids
+      "unauthorized programs". We believe a program that only looks at the screen, the way a screenshot does, is not what
+      that rule is about, but that is our reading and not Nexon's, and nobody has confirmed it. If Nexon decides
+      otherwise, the risk is on your account, not ours. Browsing the prices on this page needs no program at all.</p>
     <p>To contribute prices:</p>
     <ol>
       <li><a href="download/osmsfm-tracker.zip">Download the tracker</a> (Windows, one exe, no install) and unzip it anywhere.</li>
@@ -263,6 +269,8 @@
     $('#log').hidden = true;
     $('#dl').hidden = false;
     $('#about').hidden = false;
+    // the header button leads to the instructions, not straight to the zip: the note about the game's rules comes first
+    $('#dl').onclick = () => { $('#about').open = true; };
     const gen = new Date(STATIC.generated + 'Z');  // the server writes it in UTC
     const p = n => String(n).padStart(2, '0');
     $('#stat').textContent = `updated ${gen.getFullYear()}-${p(gen.getMonth() + 1)}-${p(gen.getDate())} ${p(gen.getHours())}:${p(gen.getMinutes())} · ${STATIC.items.length} items`;

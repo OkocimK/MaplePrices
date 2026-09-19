@@ -29,6 +29,15 @@ It never touches the game: no memory reading, no input, no packets. Screenshot p
 | `publish.py` | deploys server code, the page and the tracker zip over ssh |
 | `build_exe.py`, `make_dist.py` | PyInstaller build and the zip for download |
 
+## The game's rules
+
+The tracker is a fan-made tool, not made, approved or reviewed by Nexon or by the creators of Old
+School Maple. The MapleStory Worlds Platform Operation Policy forbids "unauthorized programs". The
+design stays on the safe side of every reading we could think of (no memory access, no input, no
+network traffic to or from the game, no overlay, no hooks; a screenshot of the window and OCR), but
+that is our reading, not Nexon's, and nobody has confirmed it. Users run it at their own risk, and
+the page and the user guide say so.
+
 ## Build
 
 ```
