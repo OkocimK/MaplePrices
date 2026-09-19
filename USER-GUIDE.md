@@ -3,7 +3,8 @@
 One file: `osmsfm-tracker.exe`. It screenshots the game window while you browse hired
 merchants on the Free Market, reads item names and prices from the screenshots and uploads
 them to the shared page https://osmsfm.duckdns.org/. It does not touch the game: no memory
-reading, no clicking, no packets. Screenshot plus OCR, nothing else.
+reading, no clicking, no packets. Screenshot plus OCR, nothing else. Open source (MIT):
+https://github.com/OkocimK/MaplePrices
 
 **Read this first.** The tracker is a fan-made tool. It is not made, approved or reviewed by Nexon
 or by the creators of Old School Maple. The MapleStory Worlds Platform Operation Policy forbids
@@ -19,6 +20,11 @@ confirmed it. If Nexon decides otherwise, the risk is on your account, not ours.
    collapsed or hidden (without it offers are stored without the map and the Free Market room number).
 3. Run the exe. Windows SmartScreen may warn about an unknown publisher the first time:
    "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.
+   Why the warning: the exe is not signed with a code signing certificate. Those cost money every
+   year, and a freshly signed program from a new publisher gets the same warning anyway until
+   enough people have run it. It means Windows does not know the author, not that it found
+   something. If you would rather not trust a download, read the source and build the exe
+   yourself, the README in the repository says how.
    Antivirus software is sometimes suspicious of PyInstaller executables, that is all it is.
 4. **F9** starts collecting, **F9** again stops. Turn it on only while you click through shops.
    The cursor may rest on the shop window; the row under it is skipped and picked up in the

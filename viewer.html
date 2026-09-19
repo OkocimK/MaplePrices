@@ -86,7 +86,9 @@
     <summary>What is this and how to help collect prices</summary>
     <p>Free Market prices of scrolls (and other items) in <b>Old School Maple</b> (MapleStory Worlds), collected by a small
       tracker that screenshots the shop window while you browse hired merchants and reads the item names and prices.
-      It does not touch the game: no memory reading, no clicking, no packets. Screenshot plus OCR, nothing else.</p>
+      It does not touch the game: no memory reading, no clicking, no packets. Screenshot plus OCR, nothing else.
+      It is open source (MIT): <a href="https://github.com/OkocimK/MaplePrices" target="_blank" rel="noopener">github.com/OkocimK/MaplePrices</a>,
+      the tracker, this page and the server that receives the prices.</p>
     <p class="warn"><b>Read this before you run it.</b> The tracker is a fan-made tool. It is not made, approved or
       reviewed by Nexon or by the creators of Old School Maple. The MapleStory Worlds Platform Operation Policy forbids
       "unauthorized programs". We believe a program that only looks at the screen, the way a screenshot does, is not what
@@ -98,7 +100,12 @@
       <li>Run the game at <b>1920x1080</b>, windowed or full screen. Other window sizes work too, but the game shrinks its UI
         with the window and small windows read worse.</li>
       <li>Run <code>osmsfm-tracker.exe</code>. Windows SmartScreen will warn about an unknown publisher the first time:
-        click "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.</li>
+        click "More info", then "Run anyway". Or right-click the exe, Properties, "Unblock" before running.
+        <br><b>Why the warning:</b> the exe is not signed with a code signing certificate. Those cost money every year,
+        and a freshly signed program from a new publisher gets the same warning anyway until enough people have run it.
+        The warning means Windows does not know the author, not that it found something. If you would rather not trust
+        a download, read the <a href="https://github.com/OkocimK/MaplePrices" target="_blank" rel="noopener">source</a> and build the exe yourself,
+        the README says how.</li>
       <li>Press <b>F9</b> to start collecting, walk through the FM shops, press <b>F9</b> again to stop. <b>Ctrl+F9</b> quits.
         The cursor may rest on the shop window; the row under it is skipped and picked up in the next frame.
         If the console keeps saying 0 shops, press <b>F10</b> with a shop open: it saves what the tracker sees to
